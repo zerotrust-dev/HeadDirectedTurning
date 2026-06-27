@@ -1,4 +1,6 @@
 #include "GameIntegration.h"
+#include "PoseMath.h"
+#include "TurnController.h"
 
 namespace HDT
 {
@@ -10,12 +12,42 @@ namespace HDT
 
     bool GameIntegration::Initialize()
     {
-        // Runtime-specific capability probes will be added with the pose provider.
-        // Until then, fail closed even if DiagnosticOnly is accidentally disabled.
-        ready_ = false;
-        failureReason_ = "HMD pose provider has not been implemented";
-        logger::warn("Game integration unavailable: {}", failureReason_);
-        return false;
+        if (initialized_) {
+            return ready_;
+        }
+        initialized_ = true;
+
+        if (!REL::Module::IsVR()) {
+            failureReason_ = "unsupported non-VR runtime";
+            logger::critical("Game integration unavailable: {}", failureReason_);
+            return false;
+        }
+
+        const auto player = RE::PlayerCharacter::GetSingleton();
+        if (!player || !player->GetVRNodeData()) {
+            failureReason_ = "Skyrim VR player data is unavailable";
+            logger::critical("Game integration unavailable: {}", failureReason_);
+            return false;
+        }
+
+        // Actor::Update is slot 0xAF in Skyrim VR. The relocation resolves the
+        // PlayerCharacter vtable through the VR Address Library, not a raw address.
+        constexpr std::size_t playerUpdateIndex = 0xAF;
+        REL::Relocation<std::uintptr_t> playerVtable{ RE::PlayerCharacter::VTABLE[0] };
+        originalPlayerUpdate_ = playerVtable.write_vfunc(
+            playerUpdateIndex,
+            PlayerUpdateHook);
+
+        if (!originalPlayerUpdate_) {
+            failureReason_ = "unable to install the player update hook";
+            logger::critical("Game integration unavailable: {}", failureReason_);
+            return false;
+        }
+
+        ready_ = true;
+        failureReason_.clear();
+        logger::info("VR pose diagnostics initialized; player update hook installed");
+        return true;
     }
 
     bool GameIntegration::IsReady() const
@@ -34,16 +66,47 @@ namespace HDT
             return std::nullopt;
         }
 
-        return std::nullopt;
+        const auto player = RE::PlayerCharacter::GetSingleton();
+        if (!player) {
+            return std::nullopt;
+        }
+
+        const auto vrNodes = player->GetVRNodeData();
+        if (!vrNodes || !vrNodes->UprightHmdNode) {
+            return std::nullopt;
+        }
+
+        RE::NiPoint3 hmdEuler{};
+        if (!vrNodes->UprightHmdNode->world.rotate.ToEulerAnglesXYZ(hmdEuler)) {
+            return std::nullopt;
+        }
+
+        const auto hmdYaw = NormalizeDegrees(RadiansToDegrees(hmdEuler.z));
+        const auto bodyYaw = NormalizeDegrees(RadiansToDegrees(player->GetAngleZ()));
+        return PoseSample{
+            hmdYaw,
+            bodyYaw,
+            NormalizeDegrees(hmdYaw - bodyYaw)
+        };
     }
 
     bool GameIntegration::IsGameFocused() const
     {
-        return true;
+        const auto main = RE::Main::GetSingleton();
+        return main && main->wnd && GetForegroundWindow() == main->wnd;
     }
 
     bool GameIntegration::ApplyYawDelta(float)
     {
+        // Output deliberately remains disabled until diagnostic pose logs prove
+        // the coordinate space and sign on a real Skyrim VR installation.
         return false;
+    }
+
+    void GameIntegration::PlayerUpdateHook(RE::Actor* actor, float deltaSeconds)
+    {
+        auto& integration = GetSingleton();
+        integration.originalPlayerUpdate_(actor, deltaSeconds);
+        TurnController::GetSingleton().OnFrame(deltaSeconds);
     }
 }

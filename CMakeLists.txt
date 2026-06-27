@@ -26,6 +26,8 @@ target_sources(
         src/main.cpp
         src/GameIntegration.cpp
         src/GameIntegration.h
+        src/PoseMath.cpp
+        src/PoseMath.h
         src/Settings.cpp
         src/Settings.h
         src/TurnController.cpp
@@ -62,6 +64,8 @@ if(BUILD_TESTING)
     add_executable(
         HeadDirectedTurningTests
         tests/TurnModelTests.cpp
+        src/PoseMath.cpp
+        src/PoseMath.h
         src/TurnModel.cpp
         src/TurnModel.h
     )

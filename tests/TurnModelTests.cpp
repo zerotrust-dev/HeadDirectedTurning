@@ -1,7 +1,9 @@
+#include "PoseMath.h"
 #include "TurnModel.h"
 
 #include <cassert>
 #include <cmath>
+#include <numbers>
 
 namespace
 {
@@ -22,6 +24,13 @@ namespace
 
 int main()
 {
+    assert(Near(HDT::RadiansToDegrees(std::numbers::pi_v<float>), 180.0F));
+    assert(Near(HDT::NormalizeDegrees(361.0F), 1.0F));
+    assert(Near(HDT::NormalizeDegrees(-361.0F), -1.0F));
+    assert(Near(HDT::NormalizeDegrees(180.0F), 180.0F));
+    assert(Near(HDT::NormalizeDegrees(-180.0F), 180.0F));
+    assert(Near(HDT::NormalizeDegrees(540.0F), 180.0F));
+
     HDT::TurnModel model;
 
     assert(Near(model.Calculate(14.9F, parameters), 0.0F));

@@ -27,6 +27,12 @@ namespace HDT
         [[nodiscard]] bool ApplyYawDelta(float degrees);
 
     private:
+        using PlayerUpdate = void(RE::Actor*, float);
+
+        static void PlayerUpdateHook(RE::Actor* actor, float deltaSeconds);
+
+        REL::Relocation<PlayerUpdate*> originalPlayerUpdate_;
+        bool initialized_{ false };
         bool ready_{ false };
         std::string failureReason_;
     };

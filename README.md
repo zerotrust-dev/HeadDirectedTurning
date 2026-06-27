@@ -3,14 +3,15 @@
 A Skyrim VR SKSE plugin for hands-free, head-directed smooth turning.
 
 > **Work in progress:** This repository is under active development. No usable
-> gameplay release exists yet. The current native integration deliberately
-> fails closed and cannot rotate the player.
+> gameplay release exists yet. The current native integration reads and logs
+> pose diagnostics but deliberately cannot rotate the player.
 
 ## Status
 
-This is a diagnostic-first scaffold. Version 0.1.0 loads settings and the turn
-controller, but intentionally fails closed because the runtime integration has
-not been implemented yet. It cannot read a pose or rotate the player.
+This is a diagnostic-first scaffold. Version 0.1.0 reads the Skyrim VR upright
+HMD yaw and player heading from a lifecycle-safe player update hook. It logs
+rate-limited samples for coordinate validation, but rotation output remains
+hard-disabled in code.
 
 Nothing in this repository deploys automatically into Skyrim or Mod Organizer 2.
 

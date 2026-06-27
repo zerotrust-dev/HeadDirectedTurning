@@ -2,5 +2,6 @@
 /.vs/
 /.vscode/
 /dist/
+/.research/
 *.user
 *.log
