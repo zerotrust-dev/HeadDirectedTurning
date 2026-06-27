@@ -32,6 +32,7 @@ namespace HDT
         static void PlayerUpdateHook(RE::Actor* actor, float deltaSeconds);
 
         REL::Relocation<PlayerUpdate*> originalPlayerUpdate_;
+        float hookLogAccumulator_{ 0.0F };
         bool initialized_{ false };
         bool ready_{ false };
         std::string failureReason_;

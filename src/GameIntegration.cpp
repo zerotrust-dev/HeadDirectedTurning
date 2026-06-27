@@ -109,6 +109,16 @@ namespace HDT
     {
         auto& integration = GetSingleton();
         integration.originalPlayerUpdate_(actor, deltaSeconds);
+
+        integration.hookLogAccumulator_ += deltaSeconds;
+        if (integration.hookLogAccumulator_ >= 1.0F) {
+            logger::debug(
+                "player update hook active; poseAvailable={} focused={}",
+                integration.ReadPose().has_value(),
+                integration.IsGameFocused());
+            integration.hookLogAccumulator_ = 0.0F;
+        }
+
         TurnController::GetSingleton().OnFrame(deltaSeconds);
     }
 }

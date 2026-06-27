@@ -42,8 +42,7 @@ namespace HDT
         constexpr auto maximumSafeFrameTime = 0.1F;
         if (!running_ ||
             deltaSeconds <= 0.0F ||
-            deltaSeconds > maximumSafeFrameTime ||
-            ShouldPause()) {
+            deltaSeconds > maximumSafeFrameTime) {
             turnModel_.Reset();
             smoothedTurnSpeed_ = 0.0F;
             return;
@@ -56,6 +55,23 @@ namespace HDT
         }
 
         const auto& settings = Settings::GetSingleton();
+        logAccumulator_ += deltaSeconds;
+        if (settings.logPoseSamples && logAccumulator_ >= 0.25F) {
+            logger::debug(
+                "raw pose hmd={:.2f} body={:.2f} relative={:.2f} focused={}",
+                sample->hmdYawDegrees,
+                sample->bodyYawDegrees,
+                sample->relativeYawDegrees,
+                integration.IsGameFocused());
+            logAccumulator_ = 0.0F;
+        }
+
+        if (ShouldPause()) {
+            turnModel_.Reset();
+            smoothedTurnSpeed_ = 0.0F;
+            return;
+        }
+
         const TurnParameters parameters{
             settings.startAngle,
             settings.stopAngle,
@@ -70,17 +86,6 @@ namespace HDT
         } else {
             const auto blend = 1.0F - std::exp(-deltaSeconds / settings.smoothingSeconds);
             smoothedTurnSpeed_ += (targetSpeed - smoothedTurnSpeed_) * blend;
-        }
-
-        logAccumulator_ += deltaSeconds;
-        if (settings.logPoseSamples && logAccumulator_ >= 0.25F) {
-            logger::debug(
-                "pose hmd={:.2f} body={:.2f} relative={:.2f} output={:.2f}",
-                sample->hmdYawDegrees,
-                sample->bodyYawDegrees,
-                sample->relativeYawDegrees,
-                smoothedTurnSpeed_);
-            logAccumulator_ = 0.0F;
         }
 
         if (!settings.diagnosticOnly) {
