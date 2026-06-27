@@ -38,7 +38,7 @@ namespace HDT
             playerUpdateIndex,
             PlayerUpdateHook);
 
-        if (!originalPlayerUpdate_) {
+        if (originalPlayerUpdate_.address() == 0) {
             failureReason_ = "unable to install the player update hook";
             logger::critical("Game integration unavailable: {}", failureReason_);
             return false;
@@ -93,7 +93,9 @@ namespace HDT
     bool GameIntegration::IsGameFocused() const
     {
         const auto main = RE::Main::GetSingleton();
-        return main && main->wnd && GetForegroundWindow() == main->wnd;
+        return main &&
+               main->wnd &&
+               GetForegroundWindow() == reinterpret_cast<HWND>(main->wnd);
     }
 
     bool GameIntegration::ApplyYawDelta(float)
