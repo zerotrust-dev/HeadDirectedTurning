@@ -18,7 +18,7 @@ namespace HDT
         float smoothingSeconds{ 0.06F };
 
         bool pauseInMenus{ true };
-        bool pauseWhenGameUnfocused{ true };
+        bool pauseWhenGameUnfocused{ false };
         bool pauseWhileMounted{ true };
 
         static Settings& GetSingleton();

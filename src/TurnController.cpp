@@ -58,7 +58,7 @@ namespace HDT
         logAccumulator_ += deltaSeconds;
         if (settings.logPoseSamples && logAccumulator_ >= 0.25F) {
             logger::debug(
-                "raw pose hmd={:.2f} body={:.2f} relative={:.2f} focused={}",
+                "raw pose hmd={:.2f} room={:.2f} relative={:.2f} active={}",
                 sample->hmdYawDegrees,
                 sample->bodyYawDegrees,
                 sample->relativeYawDegrees,

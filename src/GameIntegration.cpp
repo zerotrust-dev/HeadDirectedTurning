@@ -72,17 +72,19 @@ namespace HDT
         }
 
         const auto vrNodes = player->GetVRNodeData();
-        if (!vrNodes || !vrNodes->UprightHmdNode) {
+        if (!vrNodes || !vrNodes->UprightHmdNode || !vrNodes->RoomNode) {
             return std::nullopt;
         }
 
         RE::NiPoint3 hmdEuler{};
-        if (!vrNodes->UprightHmdNode->world.rotate.ToEulerAnglesXYZ(hmdEuler)) {
+        RE::NiPoint3 roomEuler{};
+        if (!vrNodes->UprightHmdNode->world.rotate.ToEulerAnglesXYZ(hmdEuler) ||
+            !vrNodes->RoomNode->world.rotate.ToEulerAnglesXYZ(roomEuler)) {
             return std::nullopt;
         }
 
         const auto hmdYaw = NormalizeDegrees(RadiansToDegrees(hmdEuler.z));
-        const auto bodyYaw = NormalizeDegrees(RadiansToDegrees(player->GetAngleZ()));
+        const auto bodyYaw = NormalizeDegrees(RadiansToDegrees(roomEuler.z));
         return PoseSample{
             hmdYaw,
             bodyYaw,
@@ -92,10 +94,9 @@ namespace HDT
 
     bool GameIntegration::IsGameFocused() const
     {
-        const auto main = RE::Main::GetSingleton();
-        // OpenXR runtimes may leave the desktop mirror unfocused while the HMD
-        // application is active. Skyrim's own state is the reliable VR signal.
-        return main && main->gameActive;
+        // Neither Win32 foreground state nor Main::gameActive reflects HMD
+        // focus reliably under OpenComposite. Menu and lifecycle guards remain.
+        return true;
     }
 
     bool GameIntegration::ApplyYawDelta(float)
