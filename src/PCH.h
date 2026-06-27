@@ -13,3 +13,5 @@
 #include <mutex>
 #include <optional>
 #include <string>
+
+namespace logger = SKSE::log;

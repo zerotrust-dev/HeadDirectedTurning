@@ -28,6 +28,14 @@ jobs:
           .\bootstrap-vcpkg.bat -disableMetrics
           "VCPKG_ROOT=$env:RUNNER_TEMP\vcpkg" | Out-File -FilePath $env:GITHUB_ENV -Append
 
+      - name: Cache built dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            build/release-vr/vcpkg_installed
+            ${{ runner.temp }}/vcpkg/downloads
+          key: vcpkg-windows-2022-${{ hashFiles('vcpkg.json', 'vcpkg-configuration.json') }}
+
       - name: Configure
         run: cmake --preset release-vr -DBUILD_TESTING=ON
 
