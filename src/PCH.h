@@ -14,4 +14,6 @@
 #include <optional>
 #include <string>
 
+using namespace std::literals;
+
 namespace logger = SKSE::log;
