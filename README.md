@@ -16,6 +16,8 @@ hard-disabled in code.
 Nothing in this repository deploys automatically into Skyrim or Mod Organizer 2.
 
 See [`docs/COMPATIBILITY.md`](docs/COMPATIBILITY.md) for upgrade rules.
+Use [`docs/DIAGNOSTIC_TEST.md`](docs/DIAGNOSTIC_TEST.md) for the first in-game
+pose validation.
 
 ## Intended behavior
 
