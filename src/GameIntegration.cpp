@@ -93,9 +93,9 @@ namespace HDT
     bool GameIntegration::IsGameFocused() const
     {
         const auto main = RE::Main::GetSingleton();
-        return main &&
-               main->wnd &&
-               GetForegroundWindow() == reinterpret_cast<HWND>(main->wnd);
+        // OpenXR runtimes may leave the desktop mirror unfocused while the HMD
+        // application is active. Skyrim's own state is the reliable VR signal.
+        return main && main->gameActive;
     }
 
     bool GameIntegration::ApplyYawDelta(float)
