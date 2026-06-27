@@ -1,0 +1,49 @@
+name: Build Skyrim VR plugin
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-2022
+    timeout-minutes: 45
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Bootstrap pinned vcpkg
+        shell: pwsh
+        run: |
+          git clone https://github.com/microsoft/vcpkg.git "$env:RUNNER_TEMP\vcpkg"
+          Set-Location "$env:RUNNER_TEMP\vcpkg"
+          git checkout cc288af760054fa489574bd8e22d05aa8fa01e5c
+          .\bootstrap-vcpkg.bat -disableMetrics
+          "VCPKG_ROOT=$env:RUNNER_TEMP\vcpkg" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Configure
+        run: cmake --preset release-vr -DBUILD_TESTING=ON
+
+      - name: Build
+        run: cmake --build --preset release-vr
+
+      - name: Test turn model
+        run: ctest --test-dir build/release-vr --output-on-failure
+
+      - name: Stage MO2 package
+        run: cmake --install build/release-vr --prefix staging/HeadDirectedTurning
+
+      - name: Upload MO2-ready artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: HeadDirectedTurning-${{ github.sha }}
+          path: staging/HeadDirectedTurning
+          if-no-files-found: error
+          retention-days: 30

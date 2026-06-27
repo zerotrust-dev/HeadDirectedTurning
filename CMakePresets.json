@@ -1,0 +1,22 @@
+{
+  "version": 6,
+  "configurePresets": [
+    {
+      "name": "release-vr",
+      "displayName": "Release - Skyrim VR",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/release-vr",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
+        "VCPKG_TARGET_TRIPLET": "x64-windows-static-md"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "release-vr",
+      "configurePreset": "release-vr"
+    }
+  ]
+}
