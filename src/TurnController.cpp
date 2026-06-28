@@ -57,18 +57,23 @@ namespace HDT
         }
 
         const auto& settings = Settings::GetSingleton();
+        const auto pauseReason = GetPauseReason();
         logAccumulator_ += deltaSeconds;
-        if (settings.logPoseSamples && logAccumulator_ >= 0.25F) {
+        const auto logSample =
+            settings.logPoseSamples && logAccumulator_ >= 0.25F;
+        if (logSample) {
             logger::debug(
-                "raw pose hmd={:.2f} room={:.2f} relative={:.2f} active={}",
+                "raw pose hmd={:.2f} room={:.2f} relative={:.2f} "
+                "focused={} pause={}",
                 sample->hmdYawDegrees,
                 sample->bodyYawDegrees,
                 sample->relativeYawDegrees,
-                integration.IsGameFocused());
+                integration.IsGameFocused(),
+                pauseReason);
             logAccumulator_ = 0.0F;
         }
 
-        if (ShouldPause()) {
+        if (pauseReason[0] != '\0') {
             integration.ApplyTurnInput(0.0F);
             turnModel_.Reset();
             smoothedTurnSpeed_ = 0.0F;
@@ -110,6 +115,15 @@ namespace HDT
                     direction *
                     std::copysign(stickMagnitude, smoothedTurnSpeed_);
             }
+            if (logSample && std::abs(normalizedInput) >= 0.001F) {
+                logger::debug(
+                    "turn output relative={:.2f} targetSpeed={:.2f} "
+                    "smoothedSpeed={:.2f} requested={:.3f}",
+                    sample->relativeYawDegrees,
+                    targetSpeed,
+                    smoothedTurnSpeed_,
+                    normalizedInput);
+            }
             if (!integration.ApplyTurnInput(normalizedInput)) {
                 logger::error("Rotation output failed; stopping controller");
                 Stop();
@@ -119,43 +133,46 @@ namespace HDT
         }
     }
 
-    bool TurnController::ShouldPause() const
+    const char* TurnController::GetPauseReason() const
     {
         const auto& settings = Settings::GetSingleton();
         if (!settings.enabled) {
-            return true;
+            return "disabled";
         }
 
         const auto& integration = GameIntegration::GetSingleton();
         if (!integration.IsReady()) {
-            return true;
+            return "integration-not-ready";
         }
 
         if (settings.pauseWhenGameUnfocused && !integration.IsGameFocused()) {
-            return true;
+            return "unfocused";
         }
 
         if (settings.pauseInMenus) {
             const auto ui = RE::UI::GetSingleton();
             if (ui && ui->GameIsPaused()) {
-                return true;
+                return "menu";
             }
         }
 
         const auto player = RE::PlayerCharacter::GetSingleton();
         if (!player) {
-            return true;
+            return "no-player";
         }
 
         const auto controls = RE::PlayerControls::GetSingleton();
-        if (!controls || controls->blockPlayerInput) {
-            return true;
+        if (!controls) {
+            return "no-controls";
+        }
+        if (controls->blockPlayerInput) {
+            return "blocked-input";
         }
 
         if (settings.pauseWhileMounted && player->IsOnMount()) {
-            return true;
+            return "mounted";
         }
 
-        return false;
+        return "";
     }
 }

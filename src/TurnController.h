@@ -16,7 +16,7 @@ namespace HDT
         void OnFrame(float deltaSeconds);
 
     private:
-        [[nodiscard]] bool ShouldPause() const;
+        [[nodiscard]] const char* GetPauseReason() const;
 
         std::atomic_bool running_{ false };
         TurnModel turnModel_;
