@@ -165,7 +165,7 @@ namespace HDT
         if (!controls) {
             return "no-controls";
         }
-        if (controls->blockPlayerInput) {
+        if (settings.pauseWhenInputBlocked && controls->blockPlayerInput) {
             return "blocked-input";
         }
 

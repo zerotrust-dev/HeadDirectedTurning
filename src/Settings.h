@@ -22,6 +22,7 @@ namespace HDT
 
         bool pauseInMenus{ true };
         bool pauseWhenGameUnfocused{ false };
+        bool pauseWhenInputBlocked{ false };
         bool pauseWhileMounted{ true };
 
         static Settings& GetSingleton();

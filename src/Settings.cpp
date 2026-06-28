@@ -68,6 +68,7 @@ namespace HDT
 
         pauseInMenus = ini.GetBoolValue("Safety", "PauseInMenus", pauseInMenus);
         pauseWhenGameUnfocused = ini.GetBoolValue("Safety", "PauseWhenGameUnfocused", pauseWhenGameUnfocused);
+        pauseWhenInputBlocked = ini.GetBoolValue("Safety", "PauseWhenInputBlocked", pauseWhenInputBlocked);
         pauseWhileMounted = ini.GetBoolValue("Safety", "PauseWhileMounted", pauseWhileMounted);
 
         Validate();
