@@ -14,7 +14,8 @@ namespace HDT
 
     // All runtime-sensitive Skyrim VR access belongs behind this boundary.
     // Keep raw offsets, hooks, VR nodes, and player rotation out of control logic.
-    class GameIntegration
+    class GameIntegration :
+        public RE::BSTEventSink<RE::InputEvent*>
     {
     public:
         static GameIntegration& GetSingleton();
@@ -25,6 +26,9 @@ namespace HDT
         [[nodiscard]] std::optional<PoseSample> ReadPose() const;
         [[nodiscard]] bool IsGameFocused() const;
         [[nodiscard]] bool ApplyTurnInput(float normalizedInput);
+        RE::BSEventNotifyControl ProcessEvent(
+            RE::InputEvent* const* events,
+            RE::BSTEventSource<RE::InputEvent*>* source) override;
 
     private:
         using PlayerUpdate = void(RE::Actor*, float);
@@ -40,6 +44,8 @@ namespace HDT
         float calibrationCosSum_{ 0.0F };
         std::uint32_t calibrationSamples_{ 0 };
         std::optional<float> centerOffsetDegrees_;
+        std::uint32_t tracedThumbstickEvents_{ 0 };
+        bool dispatchingSyntheticEvent_{ false };
         bool initialized_{ false };
         bool ready_{ false };
         std::string failureReason_;

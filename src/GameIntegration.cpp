@@ -30,6 +30,14 @@ namespace HDT
             return false;
         }
 
+        const auto inputManager = RE::BSInputDeviceManager::GetSingleton();
+        if (!inputManager) {
+            failureReason_ = "Skyrim input manager is unavailable";
+            logger::critical("Game integration unavailable: {}", failureReason_);
+            return false;
+        }
+        inputManager->AddEventSink(this);
+
         // Actor::Update is slot 0xAF in Skyrim VR. The relocation resolves the
         // PlayerCharacter vtable through the VR Address Library, not a raw address.
         constexpr std::size_t playerUpdateIndex = 0xAF;
@@ -137,8 +145,45 @@ namespace HDT
         event->yValue = 0.0F;
 
         RE::InputEvent* eventHead = event;
+        dispatchingSyntheticEvent_ = true;
         inputManager->SendEvent(&eventHead);
+        dispatchingSyntheticEvent_ = false;
         return true;
+    }
+
+    RE::BSEventNotifyControl GameIntegration::ProcessEvent(
+        RE::InputEvent* const* events,
+        RE::BSTEventSource<RE::InputEvent*>*)
+    {
+        if (!events || !*events || tracedThumbstickEvents_ >= 200) {
+            return RE::BSEventNotifyControl::kContinue;
+        }
+
+        for (auto event = *events; event; event = event->next) {
+            if (event->GetEventType() != RE::INPUT_EVENT_TYPE::kThumbstick) {
+                continue;
+            }
+
+            const auto thumbstick = static_cast<RE::ThumbstickEvent*>(event);
+            if (std::abs(thumbstick->xValue) < 0.01F &&
+                std::abs(thumbstick->yValue) < 0.01F) {
+                continue;
+            }
+
+            logger::debug(
+                "{} thumbstick device={} id={} x={:.3f} y={:.3f}",
+                dispatchingSyntheticEvent_ ? "synthetic" : "physical",
+                static_cast<std::int32_t>(event->GetDevice()),
+                thumbstick->GetIDCode(),
+                thumbstick->xValue,
+                thumbstick->yValue);
+            ++tracedThumbstickEvents_;
+            if (tracedThumbstickEvents_ >= 200) {
+                break;
+            }
+        }
+
+        return RE::BSEventNotifyControl::kContinue;
     }
 
     void GameIntegration::PlayerUpdateHook(RE::Actor* actor, float deltaSeconds)
