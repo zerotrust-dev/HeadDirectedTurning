@@ -32,6 +32,7 @@ namespace HDT
     void TurnController::Stop()
     {
         running_ = false;
+        GameIntegration::GetSingleton().ApplyTurnInput(0.0F);
         turnModel_.Reset();
         smoothedTurnSpeed_ = 0.0F;
     }
@@ -43,6 +44,7 @@ namespace HDT
         if (!running_ ||
             deltaSeconds <= 0.0F ||
             deltaSeconds > maximumSafeFrameTime) {
+            GameIntegration::GetSingleton().ApplyTurnInput(0.0F);
             turnModel_.Reset();
             smoothedTurnSpeed_ = 0.0F;
             return;
@@ -67,6 +69,7 @@ namespace HDT
         }
 
         if (ShouldPause()) {
+            integration.ApplyTurnInput(0.0F);
             turnModel_.Reset();
             smoothedTurnSpeed_ = 0.0F;
             return;
@@ -99,6 +102,8 @@ namespace HDT
                 logger::error("Rotation output failed; stopping controller");
                 Stop();
             }
+        } else {
+            integration.ApplyTurnInput(0.0F);
         }
     }
 

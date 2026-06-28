@@ -32,12 +32,40 @@ namespace HDT
 
     private:
         using PlayerUpdate = void(RE::Actor*, float);
+        struct ControllerAxis
+        {
+            float x;
+            float y;
+        };
+        struct ControllerState
+        {
+            std::uint32_t packetNumber;
+            std::uint32_t pad04;
+            std::uint64_t buttonsPressed;
+            std::uint64_t buttonsTouched;
+            ControllerAxis axes[5];
+        };
+        static_assert(sizeof(ControllerState) == 0x40);
+        using GetControllerState = bool(
+            void*,
+            std::uint32_t,
+            ControllerState*,
+            std::uint32_t);
 
         static void PlayerUpdateHook(RE::Actor* actor, float deltaSeconds);
+        static bool GetControllerStateHook(
+            void* vrSystem,
+            std::uint32_t deviceIndex,
+            ControllerState* state,
+            std::uint32_t stateSize);
+        bool InstallControllerStateHook();
         void UpdateAutomaticCenter(float deltaSeconds);
         [[nodiscard]] std::optional<PoseSample> ReadRawPose() const;
 
         REL::Relocation<PlayerUpdate*> originalPlayerUpdate_;
+        REL::Relocation<GetControllerState*> originalGetControllerState_;
+        std::atomic<float> requestedTurnInput_{ 0.0F };
+        std::uint32_t rightControllerIndex_{ UINT32_MAX };
         float hookLogAccumulator_{ 0.0F };
         float calibrationElapsed_{ 0.0F };
         float calibrationSinSum_{ 0.0F };
@@ -45,7 +73,7 @@ namespace HDT
         std::uint32_t calibrationSamples_{ 0 };
         std::optional<float> centerOffsetDegrees_;
         std::uint32_t tracedThumbstickEvents_{ 0 };
-        bool dispatchingSyntheticEvent_{ false };
+        bool outputReady_{ false };
         bool initialized_{ false };
         bool ready_{ false };
         std::string failureReason_;

@@ -37,6 +37,11 @@ namespace HDT
             return false;
         }
         inputManager->AddEventSink(this);
+        outputReady_ = InstallControllerStateHook();
+        if (!outputReady_) {
+            logger::warn(
+                "OpenVR controller-state output unavailable; diagnostic mode remains usable");
+        }
 
         // Actor::Update is slot 0xAF in Skyrim VR. The relocation resolves the
         // PlayerCharacter vtable through the VR Address Library, not a raw address.
@@ -121,39 +126,118 @@ namespace HDT
 
     bool GameIntegration::ApplyTurnInput(float normalizedInput)
     {
-        const auto inputManager = RE::BSInputDeviceManager::GetSingleton();
-        if (!inputManager) {
+        requestedTurnInput_.store(
+            std::clamp(normalizedInput, -1.0F, 1.0F),
+            std::memory_order_relaxed);
+        return outputReady_ || normalizedInput == 0.0F;
+    }
+
+    bool GameIntegration::InstallControllerStateHook()
+    {
+        constexpr std::size_t managerVRSystemIndex = 1;
+        constexpr std::size_t managerFakeVRSystemIndex = 3;
+        constexpr std::size_t getControllerRoleIndex = 18;
+        constexpr std::size_t getControllerStateIndex = 34;
+        constexpr std::uint32_t rightHandRole = 2;
+
+        const auto toolsModule = GetModuleHandleA("skyrimvrtools.dll");
+        if (!toolsModule) {
+            logger::warn("skyrimvrtools.dll is not loaded");
             return false;
         }
 
-        // Input events are engine-owned types whose constructors/destructors
-        // are not exported by CommonLib. Build the exact zeroed layout and use
-        // Skyrim VR's relocated vtable for this synchronous dispatch only.
-        alignas(RE::ThumbstickEvent)
-            std::array<std::byte, sizeof(RE::ThumbstickEvent)> eventStorage{};
-        auto event = reinterpret_cast<RE::ThumbstickEvent*>(eventStorage.data());
+        using GetHookManager = void* (*)();
+        const auto getHookManager = reinterpret_cast<GetHookManager>(
+            GetProcAddress(toolsModule, "GetVRHookManager"));
+        if (!getHookManager) {
+            logger::warn("SkyrimVRTools does not export GetVRHookManager");
+            return false;
+        }
 
-        static REL::Relocation<std::uintptr_t> thumbstickVtable{
-            RE::VTABLE_ThumbstickEvent[0]
-        };
-        *reinterpret_cast<std::uintptr_t*>(event) = thumbstickVtable.address();
-        static const RE::BSFixedString rightStickEvent{ "Right Stick" };
-        std::memcpy(
-            std::addressof(event->userEvent),
-            std::addressof(rightStickEvent),
-            sizeof(rightStickEvent));
-        event->device = RE::INPUT_DEVICE::kVRRight;
-        event->eventType = RE::INPUT_EVENT_TYPE::kThumbstick;
-        event->next = nullptr;
-        event->idCode = RE::ThumbstickEvent::InputType::kRightThumbstick;
-        event->xValue = std::clamp(normalizedInput, -1.0F, 1.0F);
-        event->yValue = 0.0F;
+        const auto manager = static_cast<void**>(getHookManager());
+        if (!manager) {
+            logger::warn("SkyrimVRTools hook manager is unavailable");
+            return false;
+        }
 
-        RE::InputEvent* eventHead = event;
-        dispatchingSyntheticEvent_ = true;
-        inputManager->SendEvent(&eventHead);
-        dispatchingSyntheticEvent_ = false;
+        const auto realVRSystem = static_cast<void**>(manager[managerVRSystemIndex]);
+        const auto fakeVRSystem = static_cast<void**>(manager[managerFakeVRSystemIndex]);
+        if (!realVRSystem || !fakeVRSystem || !*realVRSystem || !*fakeVRSystem) {
+            logger::warn("SkyrimVRTools OpenVR systems are not initialized");
+            return false;
+        }
+
+        using GetControllerIndexForRole = std::uint32_t(void*, std::uint32_t);
+        const auto realVtable = *reinterpret_cast<std::uintptr_t**>(realVRSystem);
+        const auto getControllerIndexForRole =
+            reinterpret_cast<GetControllerIndexForRole*>(
+                realVtable[getControllerRoleIndex]);
+        rightControllerIndex_ =
+            getControllerIndexForRole(realVRSystem, rightHandRole);
+        if (rightControllerIndex_ == UINT32_MAX) {
+            logger::warn("OpenVR right controller index is invalid");
+            return false;
+        }
+
+        const auto fakeVtableEntries =
+            *reinterpret_cast<std::uintptr_t**>(fakeVRSystem);
+        HMODULE hookOwner{};
+        constexpr auto moduleFromAddress = 0x00000004;
+        constexpr auto unchangedReferenceCount = 0x00000002;
+        if (!GetModuleHandleExA(
+                moduleFromAddress | unchangedReferenceCount,
+                reinterpret_cast<LPCSTR>(
+                    fakeVtableEntries[getControllerStateIndex]),
+                &hookOwner) ||
+            hookOwner != toolsModule) {
+            logger::warn(
+                "GetControllerState slot is not owned by SkyrimVRTools");
+            return false;
+        }
+
+        const auto fakeVtableAddress =
+            reinterpret_cast<std::uintptr_t>(fakeVtableEntries);
+        REL::Relocation<std::uintptr_t> fakeVtable{ fakeVtableAddress };
+        originalGetControllerState_ = fakeVtable.write_vfunc(
+            getControllerStateIndex,
+            GetControllerStateHook);
+        if (originalGetControllerState_.address() == 0) {
+            logger::warn("Unable to hook SkyrimVRTools GetControllerState");
+            return false;
+        }
+
+        logger::info(
+            "OpenVR output initialized for right controller index {}",
+            rightControllerIndex_);
         return true;
+    }
+
+    bool GameIntegration::GetControllerStateHook(
+        void* vrSystem,
+        std::uint32_t deviceIndex,
+        ControllerState* state,
+        std::uint32_t stateSize)
+    {
+        auto& integration = GetSingleton();
+        const auto result = integration.originalGetControllerState_(
+            vrSystem,
+            deviceIndex,
+            state,
+            stateSize);
+        if (!result ||
+            !state ||
+            stateSize < sizeof(ControllerState) ||
+            deviceIndex != integration.rightControllerIndex_) {
+            return result;
+        }
+
+        const auto requested = integration.requestedTurnInput_.load(
+            std::memory_order_relaxed);
+        state->axes[0].x = std::clamp(
+            state->axes[0].x + requested,
+            -1.0F,
+            1.0F);
+        return result;
     }
 
     RE::BSEventNotifyControl GameIntegration::ProcessEvent(
@@ -177,7 +261,7 @@ namespace HDT
 
             logger::debug(
                 "{} thumbstick device={} id={} event='{}' x={:.3f} y={:.3f}",
-                dispatchingSyntheticEvent_ ? "synthetic" : "physical",
+                "physical",
                 static_cast<std::int32_t>(event->GetDevice()),
                 thumbstick->GetIDCode(),
                 thumbstick->userEvent.c_str(),
