@@ -231,6 +231,37 @@ namespace HDT
             return result;
         }
 
+        // OpenVR runtimes are free to expose controller inputs on different raw
+        // axis slots. Capture a small, decimated sample so we can identify the
+        // Pimax/OpenComposite turn-stick slot before enabling axis injection.
+        ++integration.rawAxisTraceCalls_;
+        const auto hasRawAxisInput = std::ranges::any_of(
+            state->axes,
+            [](const ControllerAxis& axis) {
+                return std::abs(axis.x) >= 0.05F ||
+                       std::abs(axis.y) >= 0.05F;
+            });
+        if (hasRawAxisInput &&
+            integration.rawAxisTraceLines_ < 80 &&
+            integration.rawAxisTraceCalls_ % 10 == 0) {
+            logger::debug(
+                "raw right controller axes: "
+                "a0=({:.3f},{:.3f}) a1=({:.3f},{:.3f}) "
+                "a2=({:.3f},{:.3f}) a3=({:.3f},{:.3f}) "
+                "a4=({:.3f},{:.3f})",
+                state->axes[0].x,
+                state->axes[0].y,
+                state->axes[1].x,
+                state->axes[1].y,
+                state->axes[2].x,
+                state->axes[2].y,
+                state->axes[3].x,
+                state->axes[3].y,
+                state->axes[4].x,
+                state->axes[4].y);
+            ++integration.rawAxisTraceLines_;
+        }
+
         const auto requested = integration.requestedTurnInput_.load(
             std::memory_order_relaxed);
         state->axes[0].x = std::clamp(
