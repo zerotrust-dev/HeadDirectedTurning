@@ -16,7 +16,8 @@ namespace HDT
         float maximumTurnSpeed{ 75.0F };
         float accelerationCurve{ 2.2F };
         float smoothingSeconds{ 0.06F };
-        float outputScale{ 0.25F };
+        float minimumStickOutput{ 0.20F };
+        float outputScale{ 0.35F };
         bool invertDirection{ false };
 
         bool pauseInMenus{ true };

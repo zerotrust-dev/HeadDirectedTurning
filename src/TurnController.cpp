@@ -93,11 +93,23 @@ namespace HDT
 
         if (!settings.diagnosticOnly) {
             const auto direction = settings.invertDirection ? -1.0F : 1.0F;
-            const auto normalizedInput =
-                settings.maximumTurnSpeed > 0.0F ?
-                    direction * settings.outputScale *
-                        (smoothedTurnSpeed_ / settings.maximumTurnSpeed) :
-                    0.0F;
+            auto normalizedInput = 0.0F;
+            if (smoothedTurnSpeed_ != 0.0F &&
+                settings.maximumTurnSpeed > 0.0F) {
+                const auto speedFraction = std::clamp(
+                    std::abs(smoothedTurnSpeed_) /
+                        settings.maximumTurnSpeed,
+                    0.0F,
+                    1.0F);
+                const auto stickMagnitude =
+                    settings.minimumStickOutput +
+                    (settings.outputScale -
+                        settings.minimumStickOutput) *
+                        speedFraction;
+                normalizedInput =
+                    direction *
+                    std::copysign(stickMagnitude, smoothedTurnSpeed_);
+            }
             if (!integration.ApplyTurnInput(normalizedInput)) {
                 logger::error("Rotation output failed; stopping controller");
                 Stop();
