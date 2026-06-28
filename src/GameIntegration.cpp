@@ -62,10 +62,22 @@ namespace HDT
 
     std::optional<PoseSample> GameIntegration::ReadPose() const
     {
-        if (!ready_) {
+        if (!ready_ || !centerOffsetDegrees_) {
             return std::nullopt;
         }
 
+        auto sample = ReadRawPose();
+        if (!sample) {
+            return std::nullopt;
+        }
+
+        sample->relativeYawDegrees =
+            NormalizeDegrees(sample->relativeYawDegrees - *centerOffsetDegrees_);
+        return sample;
+    }
+
+    std::optional<PoseSample> GameIntegration::ReadRawPose() const
+    {
         const auto player = RE::PlayerCharacter::GetSingleton();
         if (!player) {
             return std::nullopt;
@@ -110,6 +122,7 @@ namespace HDT
     {
         auto& integration = GetSingleton();
         integration.originalPlayerUpdate_(actor, deltaSeconds);
+        integration.UpdateAutomaticCenter(deltaSeconds);
 
         integration.hookLogAccumulator_ += deltaSeconds;
         if (integration.hookLogAccumulator_ >= 1.0F) {
@@ -121,5 +134,38 @@ namespace HDT
         }
 
         TurnController::GetSingleton().OnFrame(deltaSeconds);
+    }
+
+    void GameIntegration::UpdateAutomaticCenter(float deltaSeconds)
+    {
+        constexpr auto calibrationDuration = 2.0F;
+        constexpr auto maximumSafeFrameTime = 0.1F;
+
+        if (centerOffsetDegrees_ ||
+            deltaSeconds <= 0.0F ||
+            deltaSeconds > maximumSafeFrameTime) {
+            return;
+        }
+
+        const auto sample = ReadRawPose();
+        if (!sample) {
+            return;
+        }
+
+        const auto radians =
+            sample->relativeYawDegrees * (std::numbers::pi_v<float> / 180.0F);
+        calibrationSinSum_ += std::sin(radians);
+        calibrationCosSum_ += std::cos(radians);
+        ++calibrationSamples_;
+        calibrationElapsed_ += deltaSeconds;
+
+        if (calibrationElapsed_ >= calibrationDuration && calibrationSamples_ > 0) {
+            centerOffsetDegrees_ = NormalizeDegrees(RadiansToDegrees(
+                std::atan2(calibrationSinSum_, calibrationCosSum_)));
+            logger::info(
+                "Automatic center calibrated at {:.2f} degrees from {} samples",
+                *centerOffsetDegrees_,
+                calibrationSamples_);
+        }
     }
 }

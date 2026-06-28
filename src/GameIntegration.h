@@ -30,9 +30,16 @@ namespace HDT
         using PlayerUpdate = void(RE::Actor*, float);
 
         static void PlayerUpdateHook(RE::Actor* actor, float deltaSeconds);
+        void UpdateAutomaticCenter(float deltaSeconds);
+        [[nodiscard]] std::optional<PoseSample> ReadRawPose() const;
 
         REL::Relocation<PlayerUpdate*> originalPlayerUpdate_;
         float hookLogAccumulator_{ 0.0F };
+        float calibrationElapsed_{ 0.0F };
+        float calibrationSinSum_{ 0.0F };
+        float calibrationCosSum_{ 0.0F };
+        std::uint32_t calibrationSamples_{ 0 };
+        std::optional<float> centerOffsetDegrees_;
         bool initialized_{ false };
         bool ready_{ false };
         std::string failureReason_;

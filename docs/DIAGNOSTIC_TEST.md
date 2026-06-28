@@ -12,7 +12,8 @@ This build reads pose data and writes a log. It cannot rotate the player.
 ## Test
 
 1. Start Skyrim VR through the copied MO2 profile.
-2. Load a quiet interior save and stand still for five seconds.
+2. Load a quiet interior save and hold your head naturally forward for three
+   seconds while the automatic center is measured.
 3. Look approximately 30 degrees left, return to center, then look right.
 4. Repeat while looking slightly up and then slightly down.
 5. Exit normally to desktop.
