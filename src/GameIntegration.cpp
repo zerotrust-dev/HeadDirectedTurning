@@ -171,10 +171,11 @@ namespace HDT
             }
 
             logger::debug(
-                "{} thumbstick device={} id={} x={:.3f} y={:.3f}",
+                "{} thumbstick device={} id={} event='{}' x={:.3f} y={:.3f}",
                 dispatchingSyntheticEvent_ ? "synthetic" : "physical",
                 static_cast<std::int32_t>(event->GetDevice()),
                 thumbstick->GetIDCode(),
+                thumbstick->userEvent.c_str(),
                 thumbstick->xValue,
                 thumbstick->yValue);
             ++tracedThumbstickEvents_;
