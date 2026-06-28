@@ -309,10 +309,29 @@ namespace HDT
 
         const auto requested = integration.requestedTurnInput_.load(
             std::memory_order_relaxed);
+        const auto originalAxis = state->axes[0].x;
         state->axes[0].x = std::clamp(
-            state->axes[0].x + requested,
+            originalAxis + requested,
             -1.0F,
             1.0F);
+        if (std::abs(requested) >= 0.001F) {
+            constexpr std::uint32_t maximumInjectionLines = 120;
+            const auto injectionLine =
+                integration.injectionTraceLines_.fetch_add(
+                    1,
+                    std::memory_order_relaxed) +
+                1;
+            if (injectionLine <= maximumInjectionLines) {
+                logger::debug(
+                    "axis injection line={} device={} requested={:.3f} "
+                    "before={:.3f} after={:.3f}",
+                    injectionLine,
+                    deviceIndex,
+                    requested,
+                    originalAxis,
+                    state->axes[0].x);
+            }
+        }
         return result;
     }
 

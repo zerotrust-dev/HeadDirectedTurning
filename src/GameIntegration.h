@@ -75,6 +75,7 @@ namespace HDT
         std::uint32_t tracedThumbstickEvents_{ 0 };
         std::atomic<std::uint32_t> controllerStateTraceCalls_{ 0 };
         std::atomic<std::uint32_t> movingAxisTraceLines_{ 0 };
+        std::atomic<std::uint32_t> injectionTraceLines_{ 0 };
         bool outputReady_{ false };
         bool initialized_{ false };
         bool ready_{ false };
