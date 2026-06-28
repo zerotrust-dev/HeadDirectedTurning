@@ -113,18 +113,21 @@ namespace HDT
 
     bool GameIntegration::ApplyTurnInput(float normalizedInput)
     {
-        const auto controls = RE::PlayerControls::GetSingleton();
-        if (!controls) {
+        const auto inputManager = RE::BSInputDeviceManager::GetSingleton();
+        if (!inputManager) {
             return false;
         }
-        if (controls->blockPlayerInput) {
-            return true;
-        }
 
-        controls->data.lookInputVec.x = std::clamp(
-            controls->data.lookInputVec.x + normalizedInput,
-            -1.0F,
-            1.0F);
+        RE::ThumbstickEvent event{};
+        event.device = RE::INPUT_DEVICE::kVRRight;
+        event.eventType = RE::INPUT_EVENT_TYPE::kThumbstick;
+        event.next = nullptr;
+        event.idCode = RE::ThumbstickEvent::InputType::kRightThumbstick;
+        event.xValue = std::clamp(normalizedInput, -1.0F, 1.0F);
+        event.yValue = 0.0F;
+
+        RE::InputEvent* eventHead = &event;
+        inputManager->SendEvent(&eventHead);
         return true;
     }
 
