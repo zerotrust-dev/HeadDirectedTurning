@@ -10,8 +10,10 @@
 #include <array>
 #include <atomic>
 #include <cstddef>
+#include <cstring>
 #include <cmath>
 #include <filesystem>
+#include <memory>
 #include <mutex>
 #include <numbers>
 #include <optional>

@@ -137,6 +137,11 @@ namespace HDT
             RE::VTABLE_ThumbstickEvent[0]
         };
         *reinterpret_cast<std::uintptr_t*>(event) = thumbstickVtable.address();
+        static const RE::BSFixedString rightStickEvent{ "Right Stick" };
+        std::memcpy(
+            std::addressof(event->userEvent),
+            std::addressof(rightStickEvent),
+            sizeof(rightStickEvent));
         event->device = RE::INPUT_DEVICE::kVRRight;
         event->eventType = RE::INPUT_EVENT_TYPE::kThumbstick;
         event->next = nullptr;
