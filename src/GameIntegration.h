@@ -73,8 +73,8 @@ namespace HDT
         std::uint32_t calibrationSamples_{ 0 };
         std::optional<float> centerOffsetDegrees_;
         std::uint32_t tracedThumbstickEvents_{ 0 };
-        std::uint32_t rawAxisTraceCalls_{ 0 };
-        std::uint32_t rawAxisTraceLines_{ 0 };
+        std::atomic<std::uint32_t> controllerStateTraceCalls_{ 0 };
+        std::atomic<std::uint32_t> movingAxisTraceLines_{ 0 };
         bool outputReady_{ false };
         bool initialized_{ false };
         bool ready_{ false };

@@ -224,42 +224,87 @@ namespace HDT
             deviceIndex,
             state,
             stateSize);
+
+        constexpr std::uint32_t maximumTraceCalls = 120;
+        const auto traceCall =
+            integration.controllerStateTraceCalls_.fetch_add(
+                1,
+                std::memory_order_relaxed) +
+            1;
+        if (traceCall <= maximumTraceCalls) {
+            if (state && stateSize >= sizeof(ControllerState)) {
+                logger::debug(
+                    "GetControllerState call={} device={} size={} result={} "
+                    "a0=({:.3f},{:.3f}) a1=({:.3f},{:.3f}) "
+                    "a2=({:.3f},{:.3f}) a3=({:.3f},{:.3f}) "
+                    "a4=({:.3f},{:.3f})",
+                    traceCall,
+                    deviceIndex,
+                    stateSize,
+                    result,
+                    state->axes[0].x,
+                    state->axes[0].y,
+                    state->axes[1].x,
+                    state->axes[1].y,
+                    state->axes[2].x,
+                    state->axes[2].y,
+                    state->axes[3].x,
+                    state->axes[3].y,
+                    state->axes[4].x,
+                    state->axes[4].y);
+            } else {
+                logger::debug(
+                    "GetControllerState call={} device={} size={} result={} "
+                    "state={}",
+                    traceCall,
+                    deviceIndex,
+                    stateSize,
+                    result,
+                    state ? "present" : "null");
+            }
+        }
+
+        if (result && state && stateSize >= sizeof(ControllerState)) {
+            const auto hasRawAxisInput = std::ranges::any_of(
+                state->axes,
+                [](const ControllerAxis& axis) {
+                    return std::abs(axis.x) >= 0.05F ||
+                           std::abs(axis.y) >= 0.05F;
+                });
+            if (hasRawAxisInput) {
+                constexpr std::uint32_t maximumMovingAxisLines = 80;
+                const auto movingLine =
+                    integration.movingAxisTraceLines_.fetch_add(
+                        1,
+                        std::memory_order_relaxed) +
+                    1;
+                if (movingLine <= maximumMovingAxisLines) {
+                    logger::debug(
+                        "moving raw axes line={} device={} "
+                        "a0=({:.3f},{:.3f}) a1=({:.3f},{:.3f}) "
+                        "a2=({:.3f},{:.3f}) a3=({:.3f},{:.3f}) "
+                        "a4=({:.3f},{:.3f})",
+                        movingLine,
+                        deviceIndex,
+                        state->axes[0].x,
+                        state->axes[0].y,
+                        state->axes[1].x,
+                        state->axes[1].y,
+                        state->axes[2].x,
+                        state->axes[2].y,
+                        state->axes[3].x,
+                        state->axes[3].y,
+                        state->axes[4].x,
+                        state->axes[4].y);
+                }
+            }
+        }
+
         if (!result ||
             !state ||
             stateSize < sizeof(ControllerState) ||
             deviceIndex != integration.rightControllerIndex_) {
             return result;
-        }
-
-        // OpenVR runtimes are free to expose controller inputs on different raw
-        // axis slots. Capture a small, decimated sample so we can identify the
-        // Pimax/OpenComposite turn-stick slot before enabling axis injection.
-        ++integration.rawAxisTraceCalls_;
-        const auto hasRawAxisInput = std::ranges::any_of(
-            state->axes,
-            [](const ControllerAxis& axis) {
-                return std::abs(axis.x) >= 0.05F ||
-                       std::abs(axis.y) >= 0.05F;
-            });
-        if (hasRawAxisInput &&
-            integration.rawAxisTraceLines_ < 80 &&
-            integration.rawAxisTraceCalls_ % 10 == 0) {
-            logger::debug(
-                "raw right controller axes: "
-                "a0=({:.3f},{:.3f}) a1=({:.3f},{:.3f}) "
-                "a2=({:.3f},{:.3f}) a3=({:.3f},{:.3f}) "
-                "a4=({:.3f},{:.3f})",
-                state->axes[0].x,
-                state->axes[0].y,
-                state->axes[1].x,
-                state->axes[1].y,
-                state->axes[2].x,
-                state->axes[2].y,
-                state->axes[3].x,
-                state->axes[3].y,
-                state->axes[4].x,
-                state->axes[4].y);
-            ++integration.rawAxisTraceLines_;
         }
 
         const auto requested = integration.requestedTurnInput_.load(
