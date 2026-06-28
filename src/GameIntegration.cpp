@@ -118,15 +118,25 @@ namespace HDT
             return false;
         }
 
-        RE::ThumbstickEvent event{};
-        event.device = RE::INPUT_DEVICE::kVRRight;
-        event.eventType = RE::INPUT_EVENT_TYPE::kThumbstick;
-        event.next = nullptr;
-        event.idCode = RE::ThumbstickEvent::InputType::kRightThumbstick;
-        event.xValue = std::clamp(normalizedInput, -1.0F, 1.0F);
-        event.yValue = 0.0F;
+        // Input events are engine-owned types whose constructors/destructors
+        // are not exported by CommonLib. Build the exact zeroed layout and use
+        // Skyrim VR's relocated vtable for this synchronous dispatch only.
+        alignas(RE::ThumbstickEvent)
+            std::array<std::byte, sizeof(RE::ThumbstickEvent)> eventStorage{};
+        auto event = reinterpret_cast<RE::ThumbstickEvent*>(eventStorage.data());
 
-        RE::InputEvent* eventHead = &event;
+        static REL::Relocation<std::uintptr_t> thumbstickVtable{
+            RE::VTABLE_ThumbstickEvent[0]
+        };
+        *reinterpret_cast<std::uintptr_t*>(event) = thumbstickVtable.address();
+        event->device = RE::INPUT_DEVICE::kVRRight;
+        event->eventType = RE::INPUT_EVENT_TYPE::kThumbstick;
+        event->next = nullptr;
+        event->idCode = RE::ThumbstickEvent::InputType::kRightThumbstick;
+        event->xValue = std::clamp(normalizedInput, -1.0F, 1.0F);
+        event->yValue = 0.0F;
+
+        RE::InputEvent* eventHead = event;
         inputManager->SendEvent(&eventHead);
         return true;
     }
