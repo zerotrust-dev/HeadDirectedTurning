@@ -1,6 +1,7 @@
 # First Diagnostic Test
 
-This build reads pose data and writes a log. It cannot rotate the player.
+This build reads pose data and writes a log. Keep `DiagnosticOnly=true` so its
+packaged output path remains inactive during diagnostic tests.
 
 ## Install
 

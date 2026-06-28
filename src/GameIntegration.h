@@ -24,7 +24,7 @@ namespace HDT
         [[nodiscard]] const std::string& FailureReason() const;
         [[nodiscard]] std::optional<PoseSample> ReadPose() const;
         [[nodiscard]] bool IsGameFocused() const;
-        [[nodiscard]] bool ApplyYawDelta(float degrees);
+        [[nodiscard]] bool ApplyTurnInput(float normalizedInput);
 
     private:
         using PlayerUpdate = void(RE::Actor*, float);

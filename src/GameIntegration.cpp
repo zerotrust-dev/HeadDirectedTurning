@@ -111,18 +111,29 @@ namespace HDT
         return true;
     }
 
-    bool GameIntegration::ApplyYawDelta(float)
+    bool GameIntegration::ApplyTurnInput(float normalizedInput)
     {
-        // Output deliberately remains disabled until diagnostic pose logs prove
-        // the coordinate space and sign on a real Skyrim VR installation.
-        return false;
+        const auto controls = RE::PlayerControls::GetSingleton();
+        if (!controls) {
+            return false;
+        }
+        if (controls->blockPlayerInput) {
+            return true;
+        }
+
+        controls->data.lookInputVec.x = std::clamp(
+            controls->data.lookInputVec.x + normalizedInput,
+            -1.0F,
+            1.0F);
+        return true;
     }
 
     void GameIntegration::PlayerUpdateHook(RE::Actor* actor, float deltaSeconds)
     {
         auto& integration = GetSingleton();
-        integration.originalPlayerUpdate_(actor, deltaSeconds);
         integration.UpdateAutomaticCenter(deltaSeconds);
+        TurnController::GetSingleton().OnFrame(deltaSeconds);
+        integration.originalPlayerUpdate_(actor, deltaSeconds);
 
         integration.hookLogAccumulator_ += deltaSeconds;
         if (integration.hookLogAccumulator_ >= 1.0F) {
@@ -133,7 +144,6 @@ namespace HDT
             integration.hookLogAccumulator_ = 0.0F;
         }
 
-        TurnController::GetSingleton().OnFrame(deltaSeconds);
     }
 
     void GameIntegration::UpdateAutomaticCenter(float deltaSeconds)

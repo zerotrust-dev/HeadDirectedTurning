@@ -16,6 +16,8 @@ namespace HDT
         float maximumTurnSpeed{ 75.0F };
         float accelerationCurve{ 2.2F };
         float smoothingSeconds{ 0.06F };
+        float outputScale{ 0.25F };
+        bool invertDirection{ false };
 
         bool pauseInMenus{ true };
         bool pauseWhenGameUnfocused{ false };

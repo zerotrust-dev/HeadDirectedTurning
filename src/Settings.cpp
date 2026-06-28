@@ -57,6 +57,9 @@ namespace HDT
         accelerationCurve = static_cast<float>(ini.GetDoubleValue("Turning", "AccelerationCurve", accelerationCurve));
         smoothingSeconds = static_cast<float>(
             ini.GetDoubleValue("Turning", "SmoothingSeconds", smoothingSeconds));
+        outputScale = static_cast<float>(
+            ini.GetDoubleValue("Turning", "OutputScale", outputScale));
+        invertDirection = ini.GetBoolValue("Turning", "InvertDirection", invertDirection);
 
         pauseInMenus = ini.GetBoolValue("Safety", "PauseInMenus", pauseInMenus);
         pauseWhenGameUnfocused = ini.GetBoolValue("Safety", "PauseWhenGameUnfocused", pauseWhenGameUnfocused);
@@ -74,6 +77,7 @@ namespace HDT
         maximumTurnSpeed = std::clamp(maximumTurnSpeed, minimumTurnSpeed, 720.0F);
         accelerationCurve = std::clamp(accelerationCurve, 0.25F, 6.0F);
         smoothingSeconds = std::clamp(smoothingSeconds, 0.0F, 1.0F);
+        outputScale = std::clamp(outputScale, 0.0F, 1.0F);
     }
 
     bool Settings::IsSchemaCompatible() const

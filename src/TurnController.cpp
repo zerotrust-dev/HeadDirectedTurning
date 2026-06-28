@@ -89,8 +89,13 @@ namespace HDT
         }
 
         if (!settings.diagnosticOnly) {
-            const auto yawDelta = smoothedTurnSpeed_ * deltaSeconds;
-            if (!integration.ApplyYawDelta(yawDelta)) {
+            const auto direction = settings.invertDirection ? -1.0F : 1.0F;
+            const auto normalizedInput =
+                settings.maximumTurnSpeed > 0.0F ?
+                    direction * settings.outputScale *
+                        (smoothedTurnSpeed_ / settings.maximumTurnSpeed) :
+                    0.0F;
+            if (!integration.ApplyTurnInput(normalizedInput)) {
                 logger::error("Rotation output failed; stopping controller");
                 Stop();
             }
@@ -122,6 +127,11 @@ namespace HDT
 
         const auto player = RE::PlayerCharacter::GetSingleton();
         if (!player) {
+            return true;
+        }
+
+        const auto controls = RE::PlayerControls::GetSingleton();
+        if (!controls || controls->blockPlayerInput) {
             return true;
         }
 
