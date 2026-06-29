@@ -11,6 +11,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_INTERPROCEDURAL_OPTIMIZATION_RELEASE ON)
 
 find_package(CommonLibSSE CONFIG REQUIRED)
+find_package(vigemclient CONFIG REQUIRED)
 
 add_commonlibsse_plugin(
     ${PROJECT_NAME}
@@ -19,6 +20,11 @@ add_commonlibsse_plugin(
     VERSION ${PROJECT_VERSION}
     COMPATIBILITY VR
 )
+
+# Linked statically; this DLL talks to the ViGEmBus kernel driver itself,
+# no external library deployment needed alongside the plugin.
+target_link_libraries(${PROJECT_NAME} PRIVATE vigemclient::vigemclient)
+target_link_libraries(${PROJECT_NAME} PRIVATE setupapi)
 
 target_sources(
     ${PROJECT_NAME}

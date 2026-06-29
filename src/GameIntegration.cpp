@@ -2,7 +2,7 @@
 #include "PoseMath.h"
 #include "TurnController.h"
 
-#include <Xinput.h>
+#include <ViGEm/Client.h>
 
 namespace HDT
 {
@@ -40,10 +40,10 @@ namespace HDT
         }
         inputManager->AddEventSink(this);
 
-        outputReady_ = InstallXInputHook();
+        outputReady_ = InstallViGEmTarget();
         if (!outputReady_) {
             logger::warn(
-                "XInput gamepad hook unavailable; diagnostic mode remains usable");
+                "ViGEm output unavailable; diagnostic mode remains usable");
         }
 
         // Actor::Update is slot 0xAF in Skyrim VR. The relocation resolves the
@@ -129,187 +129,107 @@ namespace HDT
 
     bool GameIntegration::ApplyTurnInput(float normalizedInput)
     {
-        requestedTurnInput_.store(
-            std::clamp(normalizedInput, -1.0F, 1.0F),
-            std::memory_order_relaxed);
-        return outputReady_ || normalizedInput == 0.0F;
-    }
+        normalizedInput = std::clamp(normalizedInput, -1.0F, 1.0F);
 
-    bool GameIntegration::InstallXInputHook()
-    {
-        // Skyrim polls the gamepad through XInput. Bethesda (like most XInput
-        // games) imports the undocumented XInputGetStateEx at ordinal 100,
-        // which reports the Xbox "Guide" button in addition to everything
-        // XInputGetState returns. Both functions take the same XINPUT_STATE
-        // pointer, so a single hook signature covers them. We patch every IAT
-        // slot in the main module that points to either function for whichever
-        // XInput DLL is loaded.
-        static constexpr const char* candidates[] = {
-            "XInput1_4.dll",
-            "XInput1_3.dll",
-            "XInput9_1_0.dll"
-        };
+        if (!outputReady_ || !vigemClient_ || !vigemTarget_) {
+            return normalizedInput == 0.0F;
+        }
 
-        const auto base = reinterpret_cast<std::uintptr_t>(GetModuleHandleW(nullptr));
-        if (base == 0) {
-            logger::warn("unable to resolve main module base");
+        XUSB_REPORT report{};
+        const auto scaled = std::lround(normalizedInput * 32767.0F);
+        report.sThumbRX = static_cast<SHORT>(std::clamp<long>(scaled, -32768L, 32767L));
+
+        const auto err = vigem_target_x360_update(
+            static_cast<PVIGEM_CLIENT>(vigemClient_),
+            static_cast<PVIGEM_TARGET>(vigemTarget_),
+            report);
+        if (!VIGEM_SUCCESS(err)) {
+            if (!vigemFailureLogged_.exchange(true, std::memory_order_relaxed)) {
+                logger::error(
+                    "ViGEm update failed (0x{:08x}); turning output disabled",
+                    static_cast<std::uint32_t>(err));
+            }
             return false;
         }
 
-        const auto dosHeader = reinterpret_cast<IMAGE_DOS_HEADER*>(base);
-        const auto ntHeaders =
-            reinterpret_cast<IMAGE_NT_HEADERS*>(base + dosHeader->e_lfanew);
-        const auto& importDir =
-            ntHeaders->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT];
-        if (importDir.VirtualAddress == 0) {
-            logger::warn("main module has no import directory");
-            return false;
-        }
-
-        std::uint32_t patchedSlots = 0;
-        const char* installedVia = nullptr;
-        FARPROC realProcForCall = nullptr;
-
-        for (const auto moduleName : candidates) {
-            const auto xinputModule = GetModuleHandleA(moduleName);
-            if (!xinputModule) {
-                continue;
-            }
-
-            // Resolve both bindings; either or both may exist in this DLL.
-            FARPROC namedProc = GetProcAddress(xinputModule, "XInputGetState");
-            FARPROC ordinalProc =
-                GetProcAddress(xinputModule, MAKEINTRESOURCEA(100));
-            if (!namedProc && !ordinalProc) {
-                continue;
-            }
-
-            auto descriptor = reinterpret_cast<IMAGE_IMPORT_DESCRIPTOR*>(
-                base + importDir.VirtualAddress);
-            for (; descriptor->Name != 0; ++descriptor) {
-                auto thunk = reinterpret_cast<IMAGE_THUNK_DATA*>(
-                    base + descriptor->FirstThunk);
-                for (; thunk->u1.Function != 0; ++thunk) {
-                    const auto current =
-                        reinterpret_cast<FARPROC>(thunk->u1.Function);
-                    if (current != namedProc && current != ordinalProc) {
-                        continue;
-                    }
-
-                    auto slot = &thunk->u1.Function;
-                    DWORD oldProtect = 0;
-                    if (!VirtualProtect(
-                            slot,
-                            sizeof(*slot),
-                            PAGE_READWRITE,
-                            &oldProtect)) {
-                        logger::warn(
-                            "VirtualProtect failed for an XInput IAT slot");
-                        continue;
-                    }
-                    *slot = reinterpret_cast<std::uintptr_t>(&XInputGetStateHook);
-                    VirtualProtect(slot, sizeof(*slot), oldProtect, &oldProtect);
-
-                    // Forward to the same export the slot pointed at, so
-                    // ordinal-100 callers keep getting Guide-button data.
-                    if (!realProcForCall) {
-                        realProcForCall = current;
-                    }
-                    installedVia = moduleName;
-                    ++patchedSlots;
-
-                    logger::info(
-                        "XInput IAT slot patched: module={} {} addr={}",
-                        moduleName,
-                        (current == ordinalProc) ?
-                            "XInputGetStateEx(ord100)" :
-                            "XInputGetState(named)",
-                        reinterpret_cast<void*>(current));
-                }
+        if (std::abs(normalizedInput) >= 0.001F) {
+            constexpr std::uint32_t maximumInjectionLines = 120;
+            const auto line =
+                injectionTraceLines_.fetch_add(
+                    1,
+                    std::memory_order_relaxed) +
+                1;
+            if (line <= maximumInjectionLines) {
+                logger::debug(
+                    "vigem inject line={} requested={:.3f} sThumbRX={}",
+                    line,
+                    normalizedInput,
+                    static_cast<int>(report.sThumbRX));
             }
         }
-
-        if (patchedSlots == 0) {
-            logger::warn(
-                "no XInputGetState/Ex import was found in the main module");
-            return false;
-        }
-
-        realXInputGetState_ =
-            reinterpret_cast<XInputGetStateFn>(realProcForCall);
-        logger::info(
-            "XInput gamepad hook installed: {} slot(s) via {} "
-            "(turn -> right stick)",
-            patchedSlots,
-            installedVia ? installedVia : "?");
         return true;
     }
 
-    std::uint32_t __stdcall GameIntegration::XInputGetStateHook(
-        std::uint32_t userIndex,
-        void* state)
+    bool GameIntegration::InstallViGEmTarget()
     {
-        auto& integration = GetSingleton();
-        auto result = integration.realXInputGetState_ ?
-            integration.realXInputGetState_(userIndex, state) :
-            static_cast<std::uint32_t>(ERROR_DEVICE_NOT_CONNECTED);
-
-        // Only synthesize on the primary pad slot, and only when we have a
-        // valid buffer to write into.
-        if (!state || userIndex != 0) {
-            return result;
+        // Allocate client and connect to the ViGEmBus kernel driver. Failure
+        // here almost always means the driver is not installed.
+        auto client = vigem_alloc();
+        if (!client) {
+            logger::warn("ViGEm client allocation failed");
+            return false;
+        }
+        auto err = vigem_connect(client);
+        if (!VIGEM_SUCCESS(err)) {
+            logger::warn(
+                "ViGEmBus connection failed (0x{:08x}); install the ViGEmBus "
+                "driver from https://github.com/nefarius/ViGEmBus/releases",
+                static_cast<std::uint32_t>(err));
+            vigem_free(client);
+            return false;
         }
 
-        auto inputState = static_cast<XINPUT_STATE*>(state);
-        const auto requested = integration.requestedTurnInput_.load(
-            std::memory_order_relaxed);
-
-        bool modified = false;
-
-        // Present a connected pad even when no physical/virtual gamepad exists,
-        // so Skyrim reads our synthetic right stick. This mirrors the ViGEm
-        // virtual pad that turned correctly on this rig.
-        if (result != ERROR_SUCCESS) {
-            ZeroMemory(&inputState->Gamepad, sizeof(XINPUT_GAMEPAD));
-            result = ERROR_SUCCESS;
-            modified = true;
+        auto target = vigem_target_x360_alloc();
+        if (!target) {
+            logger::warn("ViGEm target_x360 allocation failed");
+            vigem_disconnect(client);
+            vigem_free(client);
+            return false;
+        }
+        err = vigem_target_add(client, target);
+        if (!VIGEM_SUCCESS(err)) {
+            logger::warn(
+                "ViGEm target_add failed (0x{:08x})",
+                static_cast<std::uint32_t>(err));
+            vigem_target_free(target);
+            vigem_disconnect(client);
+            vigem_free(client);
+            return false;
         }
 
-        if (requested != 0.0F) {
-            const auto before = static_cast<int>(inputState->Gamepad.sThumbRX);
-            auto value =
-                before + static_cast<int>(std::lround(requested * 32767.0F));
-            value = std::clamp(value, -32768, 32767);
-            inputState->Gamepad.sThumbRX = static_cast<SHORT>(value);
-            modified = true;
+        vigemClient_ = client;
+        vigemTarget_ = target;
+        logger::info(
+            "ViGEm virtual Xbox 360 pad plugged in (turn -> right stick)");
+        return true;
+    }
 
-            constexpr std::uint32_t maximumInjectionLines = 120;
-            const auto injectionLine =
-                integration.injectionTraceLines_.fetch_add(
-                    1,
-                    std::memory_order_relaxed) +
-                1;
-            if (injectionLine <= maximumInjectionLines) {
-                logger::debug(
-                    "xinput inject line={} user={} requested={:.3f} "
-                    "beforeRX={} afterRX={}",
-                    injectionLine,
-                    userIndex,
-                    requested,
-                    before,
-                    value);
-            }
+    void GameIntegration::TeardownViGEmTarget()
+    {
+        if (vigemClient_ && vigemTarget_) {
+            vigem_target_remove(
+                static_cast<PVIGEM_CLIENT>(vigemClient_),
+                static_cast<PVIGEM_TARGET>(vigemTarget_));
         }
-
-        if (modified) {
-            inputState->dwPacketNumber =
-                integration.syntheticPacket_.fetch_add(
-                    1,
-                    std::memory_order_relaxed) +
-                1;
+        if (vigemTarget_) {
+            vigem_target_free(static_cast<PVIGEM_TARGET>(vigemTarget_));
+            vigemTarget_ = nullptr;
         }
-
-        return result;
+        if (vigemClient_) {
+            vigem_disconnect(static_cast<PVIGEM_CLIENT>(vigemClient_));
+            vigem_free(static_cast<PVIGEM_CLIENT>(vigemClient_));
+            vigemClient_ = nullptr;
+        }
     }
 
     RE::BSEventNotifyControl GameIntegration::ProcessEvent(

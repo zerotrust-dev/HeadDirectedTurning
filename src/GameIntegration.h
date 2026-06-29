@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <optional>
 #include <string>
 
@@ -15,10 +16,10 @@ namespace HDT
     // All runtime-sensitive Skyrim VR access belongs behind this boundary.
     // Keep raw offsets, hooks, VR nodes, and player rotation out of control logic.
     //
-    // Turn output is delivered through the standard XInput gamepad right stick,
-    // not the OpenVR VR-controller axis. Skyrim VR turns from a connected
-    // gamepad's right stick (proven on this rig by the earlier ViGEm projects),
-    // and that path is independent of Pimax/OpenComposite VR-controller routing.
+    // Turn output is delivered through a ViGEm virtual Xbox 360 controller.
+    // The same mechanism (via vgamepad) drove turning correctly on this rig
+    // in the trackir and phone_imu projects. From every other mod's point of
+    // view the plugin is invisible: it just adds one more gamepad to Windows.
     class GameIntegration :
         public RE::BSTEventSink<RE::InputEvent*>
     {
@@ -37,24 +38,19 @@ namespace HDT
 
     private:
         using PlayerUpdate = void(RE::Actor*, float);
-        // Matches WINAPI XInputGetState(DWORD, XINPUT_STATE*). The state pointer
-        // is kept opaque here so this header stays free of <Xinput.h>; the
-        // implementation casts it to XINPUT_STATE*.
-        using XInputGetStateFn =
-            std::uint32_t(__stdcall*)(std::uint32_t, void*);
 
         static void PlayerUpdateHook(RE::Actor* actor, float deltaSeconds);
-        static std::uint32_t __stdcall XInputGetStateHook(
-            std::uint32_t userIndex,
-            void* state);
-        bool InstallXInputHook();
+        bool InstallViGEmTarget();
+        void TeardownViGEmTarget();
         void UpdateAutomaticCenter(float deltaSeconds);
         [[nodiscard]] std::optional<PoseSample> ReadRawPose() const;
 
         REL::Relocation<PlayerUpdate*> originalPlayerUpdate_;
-        XInputGetStateFn realXInputGetState_{ nullptr };
-        std::atomic<float> requestedTurnInput_{ 0.0F };
-        std::atomic<std::uint32_t> syntheticPacket_{ 0 };
+        // PVIGEM_CLIENT / PVIGEM_TARGET kept opaque so this header doesn't
+        // pull in the ViGEmClient headers; the .cpp casts them.
+        void* vigemClient_{ nullptr };
+        void* vigemTarget_{ nullptr };
+        std::atomic<bool> vigemFailureLogged_{ false };
         float hookLogAccumulator_{ 0.0F };
         float calibrationElapsed_{ 0.0F };
         float calibrationSinSum_{ 0.0F };
