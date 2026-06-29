@@ -2,7 +2,150 @@
 #include "PoseMath.h"
 #include "TurnController.h"
 
-#include <ViGEm/Client.h>
+namespace
+{
+    using ViGEmError = std::uint32_t;
+
+    constexpr ViGEmError kViGEmErrorNone = 0x20000000;
+
+    struct ViGEmXusbReport
+    {
+        std::uint16_t buttons{};
+        std::uint8_t leftTrigger{};
+        std::uint8_t rightTrigger{};
+        std::int16_t thumbLX{};
+        std::int16_t thumbLY{};
+        std::int16_t thumbRX{};
+        std::int16_t thumbRY{};
+    };
+    static_assert(sizeof(ViGEmXusbReport) == 12);
+
+    struct ViGEmApi
+    {
+        using Alloc = void* (*)();
+        using Free = void (*)(void*);
+        using Connect = ViGEmError (*)(void*);
+        using Disconnect = void (*)(void*);
+        using TargetAlloc = void* (*)();
+        using TargetFree = void (*)(void*);
+        using TargetAdd = ViGEmError (*)(void*, void*);
+        using TargetRemove = ViGEmError (*)(void*, void*);
+        using TargetUpdate =
+            ViGEmError (*)(void*, void*, ViGEmXusbReport);
+
+        HMODULE module{ nullptr };
+        Alloc alloc{ nullptr };
+        Free free{ nullptr };
+        Connect connect{ nullptr };
+        Disconnect disconnect{ nullptr };
+        TargetAlloc targetX360Alloc{ nullptr };
+        TargetFree targetFree{ nullptr };
+        TargetAdd targetAdd{ nullptr };
+        TargetRemove targetRemove{ nullptr };
+        TargetUpdate targetX360Update{ nullptr };
+
+        [[nodiscard]] bool Complete() const
+        {
+            return module &&
+                alloc &&
+                free &&
+                connect &&
+                disconnect &&
+                targetX360Alloc &&
+                targetFree &&
+                targetAdd &&
+                targetRemove &&
+                targetX360Update;
+        }
+    };
+
+    ViGEmApi g_vigem;
+
+    [[nodiscard]] bool ViGEmSucceeded(ViGEmError error)
+    {
+        return error == kViGEmErrorNone;
+    }
+
+    [[nodiscard]] std::filesystem::path ViGEmClientPath()
+    {
+        HMODULE pluginModule = nullptr;
+        const auto address = reinterpret_cast<LPCWSTR>(
+            reinterpret_cast<std::uintptr_t>(&ViGEmClientPath));
+        if (!GetModuleHandleExW(
+                GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+                    GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                address,
+                &pluginModule)) {
+            return {};
+        }
+
+        std::wstring path(32768, L'\0');
+        const auto length = GetModuleFileNameW(
+            pluginModule,
+            path.data(),
+            static_cast<DWORD>(path.size()));
+        if (length == 0 || length >= path.size()) {
+            return {};
+        }
+        path.resize(length);
+        return std::filesystem::path(path).parent_path() / L"ViGEmClient.dll";
+    }
+
+    [[nodiscard]] bool LoadViGEmApi()
+    {
+        if (g_vigem.Complete()) {
+            return true;
+        }
+
+        const auto path = ViGEmClientPath();
+        if (path.empty()) {
+            logger::warn("unable to resolve the SKSE plugin directory");
+            return false;
+        }
+
+        g_vigem.module = LoadLibraryExW(
+            path.c_str(),
+            nullptr,
+            LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR |
+                LOAD_LIBRARY_SEARCH_SYSTEM32);
+        if (!g_vigem.module) {
+            logger::warn(
+                "unable to load {} (Win32 error {})",
+                path.string(),
+                GetLastError());
+            return false;
+        }
+
+        g_vigem.alloc = reinterpret_cast<ViGEmApi::Alloc>(
+            GetProcAddress(g_vigem.module, "vigem_alloc"));
+        g_vigem.free = reinterpret_cast<ViGEmApi::Free>(
+            GetProcAddress(g_vigem.module, "vigem_free"));
+        g_vigem.connect = reinterpret_cast<ViGEmApi::Connect>(
+            GetProcAddress(g_vigem.module, "vigem_connect"));
+        g_vigem.disconnect = reinterpret_cast<ViGEmApi::Disconnect>(
+            GetProcAddress(g_vigem.module, "vigem_disconnect"));
+        g_vigem.targetX360Alloc = reinterpret_cast<ViGEmApi::TargetAlloc>(
+            GetProcAddress(g_vigem.module, "vigem_target_x360_alloc"));
+        g_vigem.targetFree = reinterpret_cast<ViGEmApi::TargetFree>(
+            GetProcAddress(g_vigem.module, "vigem_target_free"));
+        g_vigem.targetAdd = reinterpret_cast<ViGEmApi::TargetAdd>(
+            GetProcAddress(g_vigem.module, "vigem_target_add"));
+        g_vigem.targetRemove = reinterpret_cast<ViGEmApi::TargetRemove>(
+            GetProcAddress(g_vigem.module, "vigem_target_remove"));
+        g_vigem.targetX360Update = reinterpret_cast<ViGEmApi::TargetUpdate>(
+            GetProcAddress(g_vigem.module, "vigem_target_x360_update"));
+
+        if (!g_vigem.Complete()) {
+            logger::warn("ViGEmClient.dll is missing one or more required exports");
+            FreeLibrary(g_vigem.module);
+            g_vigem = {};
+            return false;
+        }
+
+        logger::info("ViGEmClient runtime loaded from {}", path.string());
+        return true;
+    }
+}
 
 namespace HDT
 {
@@ -10,6 +153,25 @@ namespace HDT
     {
         static GameIntegration singleton;
         return singleton;
+    }
+
+    GameIntegration::~GameIntegration()
+    {
+        TeardownViGEmTarget();
+    }
+
+    bool GameIntegration::InitializeOutput()
+    {
+        if (outputInitialized_) {
+            return outputReady_;
+        }
+        outputInitialized_ = true;
+        outputReady_ = InstallViGEmTarget();
+        if (!outputReady_) {
+            logger::warn(
+                "ViGEm output unavailable; diagnostic mode remains usable");
+        }
+        return outputReady_;
     }
 
     bool GameIntegration::Initialize()
@@ -40,11 +202,7 @@ namespace HDT
         }
         inputManager->AddEventSink(this);
 
-        outputReady_ = InstallViGEmTarget();
-        if (!outputReady_) {
-            logger::warn(
-                "ViGEm output unavailable; diagnostic mode remains usable");
-        }
+        (void)InitializeOutput();
 
         // Actor::Update is slot 0xAF in Skyrim VR. The relocation resolves the
         // PlayerCharacter vtable through the VR Address Library, not a raw address.
@@ -135,15 +293,16 @@ namespace HDT
             return normalizedInput == 0.0F;
         }
 
-        XUSB_REPORT report{};
+        ViGEmXusbReport report{};
         const auto scaled = std::lround(normalizedInput * 32767.0F);
-        report.sThumbRX = static_cast<SHORT>(std::clamp<long>(scaled, -32768L, 32767L));
+        report.thumbRX = static_cast<std::int16_t>(
+            std::clamp<long>(scaled, -32768L, 32767L));
 
-        const auto err = vigem_target_x360_update(
-            static_cast<PVIGEM_CLIENT>(vigemClient_),
-            static_cast<PVIGEM_TARGET>(vigemTarget_),
+        const auto err = g_vigem.targetX360Update(
+            vigemClient_,
+            vigemTarget_,
             report);
-        if (!VIGEM_SUCCESS(err)) {
+        if (!ViGEmSucceeded(err)) {
             if (!vigemFailureLogged_.exchange(true, std::memory_order_relaxed)) {
                 logger::error(
                     "ViGEm update failed (0x{:08x}); turning output disabled",
@@ -164,7 +323,7 @@ namespace HDT
                     "vigem inject line={} requested={:.3f} sThumbRX={}",
                     line,
                     normalizedInput,
-                    static_cast<int>(report.sThumbRX));
+                    static_cast<int>(report.thumbRX));
             }
         }
         return true;
@@ -174,36 +333,40 @@ namespace HDT
     {
         // Allocate client and connect to the ViGEmBus kernel driver. Failure
         // here almost always means the driver is not installed.
-        auto client = vigem_alloc();
+        if (!LoadViGEmApi()) {
+            return false;
+        }
+
+        auto client = g_vigem.alloc();
         if (!client) {
             logger::warn("ViGEm client allocation failed");
             return false;
         }
-        auto err = vigem_connect(client);
-        if (!VIGEM_SUCCESS(err)) {
+        auto err = g_vigem.connect(client);
+        if (!ViGEmSucceeded(err)) {
             logger::warn(
                 "ViGEmBus connection failed (0x{:08x}); install the ViGEmBus "
                 "driver from https://github.com/nefarius/ViGEmBus/releases",
                 static_cast<std::uint32_t>(err));
-            vigem_free(client);
+            g_vigem.free(client);
             return false;
         }
 
-        auto target = vigem_target_x360_alloc();
+        auto target = g_vigem.targetX360Alloc();
         if (!target) {
             logger::warn("ViGEm target_x360 allocation failed");
-            vigem_disconnect(client);
-            vigem_free(client);
+            g_vigem.disconnect(client);
+            g_vigem.free(client);
             return false;
         }
-        err = vigem_target_add(client, target);
-        if (!VIGEM_SUCCESS(err)) {
+        err = g_vigem.targetAdd(client, target);
+        if (!ViGEmSucceeded(err)) {
             logger::warn(
                 "ViGEm target_add failed (0x{:08x})",
                 static_cast<std::uint32_t>(err));
-            vigem_target_free(target);
-            vigem_disconnect(client);
-            vigem_free(client);
+            g_vigem.targetFree(target);
+            g_vigem.disconnect(client);
+            g_vigem.free(client);
             return false;
         }
 
@@ -217,18 +380,20 @@ namespace HDT
     void GameIntegration::TeardownViGEmTarget()
     {
         if (vigemClient_ && vigemTarget_) {
-            vigem_target_remove(
-                static_cast<PVIGEM_CLIENT>(vigemClient_),
-                static_cast<PVIGEM_TARGET>(vigemTarget_));
+            (void)g_vigem.targetRemove(vigemClient_, vigemTarget_);
         }
         if (vigemTarget_) {
-            vigem_target_free(static_cast<PVIGEM_TARGET>(vigemTarget_));
+            g_vigem.targetFree(vigemTarget_);
             vigemTarget_ = nullptr;
         }
         if (vigemClient_) {
-            vigem_disconnect(static_cast<PVIGEM_CLIENT>(vigemClient_));
-            vigem_free(static_cast<PVIGEM_CLIENT>(vigemClient_));
+            g_vigem.disconnect(vigemClient_);
+            g_vigem.free(vigemClient_);
             vigemClient_ = nullptr;
+        }
+        if (g_vigem.module) {
+            FreeLibrary(g_vigem.module);
+            g_vigem = {};
         }
     }
 

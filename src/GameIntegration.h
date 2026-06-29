@@ -27,6 +27,7 @@ namespace HDT
         static GameIntegration& GetSingleton();
 
         [[nodiscard]] bool Initialize();
+        [[nodiscard]] bool InitializeOutput();
         [[nodiscard]] bool IsReady() const;
         [[nodiscard]] const std::string& FailureReason() const;
         [[nodiscard]] std::optional<PoseSample> ReadPose() const;
@@ -39,6 +40,7 @@ namespace HDT
     private:
         using PlayerUpdate = void(RE::Actor*, float);
 
+        ~GameIntegration();
         static void PlayerUpdateHook(RE::Actor* actor, float deltaSeconds);
         bool InstallViGEmTarget();
         void TeardownViGEmTarget();
@@ -59,6 +61,7 @@ namespace HDT
         std::optional<float> centerOffsetDegrees_;
         std::uint32_t tracedThumbstickEvents_{ 0 };
         std::atomic<std::uint32_t> injectionTraceLines_{ 0 };
+        bool outputInitialized_{ false };
         bool outputReady_{ false };
         bool initialized_{ false };
         bool ready_{ false };

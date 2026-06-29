@@ -1,3 +1,4 @@
+#include "GameIntegration.h"
 #include "Settings.h"
 #include "TurnController.h"
 #include "Version.h"
@@ -36,6 +37,10 @@ SKSEPluginLoad(const SKSE::LoadInterface* skse)
     logger::info("{} {} loading", HDT::Version::name, HDT::Version::semantic);
 
     SKSE::Init(skse);
+
+    // Create the virtual controller before Skyrim finishes discovering input
+    // devices. DataLoaded is too late on builds that stop polling absent pads.
+    (void)HDT::GameIntegration::GetSingleton().InitializeOutput();
 
     const auto messaging = SKSE::GetMessagingInterface();
     if (!messaging || !messaging->RegisterListener(OnSKSEMessage)) {
