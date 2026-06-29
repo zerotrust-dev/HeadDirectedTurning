@@ -5,9 +5,9 @@
 namespace HDT::CompanionProtocol
 {
     inline constexpr wchar_t mappingName[] =
-        L"Local\\HeadDirectedTurning.Output.v2";
-    inline constexpr std::uint32_t magic = 0x32544448;  // "HDT2"
-    inline constexpr std::uint32_t version = 2;
+        L"Local\\HeadDirectedTurning.Output.v3";
+    inline constexpr std::uint32_t magic = 0x33544448;  // "HDT3"
+    inline constexpr std::uint32_t version = 3;
     inline constexpr std::uint64_t watchdogMilliseconds = 250;
 
     // The companion creates and initializes this mapping before Skyrim starts.
@@ -24,7 +24,11 @@ namespace HDT::CompanionProtocol
         std::uint32_t appliedSequence{};
         std::uint32_t lastViGEmError{};
         std::uint64_t companionHeartbeatMilliseconds{};
+        std::int32_t vigemUserIndex{ -1 };
+        std::uint32_t connectedXInputSlots{};
+        std::uint32_t companionProcessId{};
+        std::uint32_t watchdogActive{};
     };
 
-    static_assert(sizeof(State) == 48);
+    static_assert(sizeof(State) == 64);
 }

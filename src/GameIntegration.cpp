@@ -339,15 +339,41 @@ namespace HDT
                 const auto age = GetTickCount64() >= companionHeartbeat ?
                     GetTickCount64() - companionHeartbeat :
                     0;
+                const auto userIndex = InterlockedCompareExchange(
+                    reinterpret_cast<volatile LONG*>(
+                        &state->vigemUserIndex),
+                    0,
+                    0);
+                const auto slotMask = InterlockedCompareExchange(
+                    reinterpret_cast<volatile LONG*>(
+                        &state->connectedXInputSlots),
+                    0,
+                    0);
+                const auto companionPid = InterlockedCompareExchange(
+                    reinterpret_cast<volatile LONG*>(
+                        &state->companionProcessId),
+                    0,
+                    0);
+                const auto watchdog = InterlockedCompareExchange(
+                    reinterpret_cast<volatile LONG*>(
+                        &state->watchdogActive),
+                    0,
+                    0);
                 logger::debug(
                     "companion status requestedRX={} seq={} appliedRX={} "
-                    "appliedSeq={} vigemError=0x{:08x} heartbeatAge={}ms",
+                    "appliedSeq={} vigemError=0x{:08x} heartbeatAge={}ms "
+                    "userIndex={} xinputSlots=0x{:x} companionPid={} "
+                    "watchdog={}",
                     requested,
                     sequence,
                     applied,
                     appliedSequence,
                     static_cast<std::uint32_t>(error),
-                    age);
+                    age,
+                    userIndex,
+                    static_cast<std::uint32_t>(slotMask),
+                    companionPid,
+                    watchdog);
             }
             integration.hookLogAccumulator_ = 0.0F;
         }

@@ -13,6 +13,7 @@
 #include <iostream>
 #include <string_view>
 #include <thread>
+#include <iomanip>
 
 namespace
 {
@@ -42,6 +43,7 @@ namespace
         using TargetAdd = ViGEmError (*)(void*, void*);
         using TargetRemove = ViGEmError (*)(void*, void*);
         using TargetUpdate = ViGEmError (*)(void*, void*, XusbReport);
+        using TargetGetUserIndex = ViGEmError (*)(void*, void*, unsigned long*);
 
         HMODULE module{};
         Alloc alloc{};
@@ -53,12 +55,13 @@ namespace
         TargetAdd targetAdd{};
         TargetRemove targetRemove{};
         TargetUpdate targetX360Update{};
+        TargetGetUserIndex targetX360GetUserIndex{};
 
         [[nodiscard]] bool Complete() const
         {
             return module && alloc && free && connect && disconnect &&
                 targetX360Alloc && targetFree && targetAdd && targetRemove &&
-                targetX360Update;
+                targetX360Update && targetX360GetUserIndex;
         }
     };
 
@@ -123,6 +126,11 @@ namespace
             GetProcAddress(api.module, "vigem_target_remove"));
         api.targetX360Update = reinterpret_cast<ViGEmApi::TargetUpdate>(
             GetProcAddress(api.module, "vigem_target_x360_update"));
+        api.targetX360GetUserIndex =
+            reinterpret_cast<ViGEmApi::TargetGetUserIndex>(
+                GetProcAddress(
+                    api.module,
+                    "vigem_target_x360_get_user_index"));
 
         if (!api.Complete()) {
             std::cerr << "ViGEmClient.dll is missing required exports.\n";
@@ -130,6 +138,66 @@ namespace
             return {};
         }
         return api;
+    }
+
+    struct XInputGamepad
+    {
+        std::uint16_t buttons{};
+        std::uint8_t leftTrigger{};
+        std::uint8_t rightTrigger{};
+        std::int16_t thumbLX{};
+        std::int16_t thumbLY{};
+        std::int16_t thumbRX{};
+        std::int16_t thumbRY{};
+    };
+    struct XInputState
+    {
+        std::uint32_t packetNumber{};
+        XInputGamepad gamepad{};
+    };
+    using XInputGetStateFn = DWORD(WINAPI*)(DWORD, XInputState*);
+
+    struct XInputApi
+    {
+        HMODULE module{};
+        XInputGetStateFn getState{};
+        std::wstring moduleName{};
+    };
+
+    [[nodiscard]] XInputApi LoadXInput()
+    {
+        for (const auto* name :
+             { L"xinput1_4.dll", L"xinput1_3.dll", L"xinput9_1_0.dll" }) {
+            const auto module = LoadLibraryExW(
+                name, nullptr, LOAD_LIBRARY_SEARCH_SYSTEM32);
+            if (!module) {
+                continue;
+            }
+            const auto getState = reinterpret_cast<XInputGetStateFn>(
+                GetProcAddress(module, "XInputGetState"));
+            if (getState) {
+                return { module, getState, name };
+            }
+            FreeLibrary(module);
+        }
+        return {};
+    }
+
+    [[nodiscard]] std::uint32_t ReadXInputSlots(
+        const XInputApi& xinput,
+        XInputState (&states)[4])
+    {
+        std::uint32_t mask = 0;
+        if (!xinput.getState) {
+            return mask;
+        }
+        for (DWORD index = 0; index < 4; ++index) {
+            states[index] = {};
+            if (xinput.getState(index, &states[index]) == ERROR_SUCCESS) {
+                mask |= 1U << index;
+            }
+        }
+        return mask;
     }
 
     [[nodiscard]] bool IsSkyrimRunning()
@@ -291,14 +359,69 @@ int main()
     *state = {};
     state->magicValue = HDT::CompanionProtocol::magic;
     state->versionValue = HDT::CompanionProtocol::version;
+    state->companionProcessId = GetCurrentProcessId();
 
     const auto logPath =
         ExecutableDirectory() / L"HeadDirectedTurningCompanion.log";
     std::ofstream log(logPath, std::ios::trunc);
-    log << "time_ms,sequence,requested_rx,applied_rx,vigem_error\n";
+    log << "# HeadDirectedTurning companion diagnostic log\n"
+        << "# protocol_version=" << HDT::CompanionProtocol::version
+        << " companion_pid=" << GetCurrentProcessId()
+        << " executable=" << ExecutableDirectory().string() << '\n'
+        << "# vigem_dll="
+        << (ExecutableDirectory() / L"ViGEmClient.dll").string() << '\n';
+
+    auto xinput = LoadXInput();
+    log << "# xinput_module="
+        << (xinput.module ? std::filesystem::path(xinput.moduleName).string()
+                          : "UNAVAILABLE")
+        << '\n';
+
+    unsigned long userIndex = 0;
+    auto userIndexError = vigem.targetX360GetUserIndex(
+        client, target, &userIndex);
+    // Device arrival can lag target creation briefly.
+    for (int attempt = 0;
+         userIndexError != kViGEmErrorNone && attempt < 20;
+         ++attempt) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        userIndexError = vigem.targetX360GetUserIndex(
+            client, target, &userIndex);
+    }
+    state->vigemUserIndex =
+        userIndexError == kViGEmErrorNone ?
+            static_cast<std::int32_t>(userIndex) :
+            -1;
+    log << "# vigem_user_index=" << state->vigemUserIndex
+        << " get_user_index_error=0x" << std::hex << std::setw(8)
+        << std::setfill('0') << userIndexError << std::dec << '\n';
+
+    XInputState xinputStates[4]{};
+    auto xinputMask = ReadXInputSlots(xinput, xinputStates);
+    state->connectedXInputSlots = xinputMask;
+    log << "# initial_xinput_slot_mask=0x" << std::hex << xinputMask
+        << std::dec << '\n';
+    for (std::uint32_t index = 0; index < 4; ++index) {
+        if ((xinputMask & (1U << index)) == 0) {
+            log << "# xinput_slot_" << index << "=disconnected\n";
+            continue;
+        }
+        const auto& gamepad = xinputStates[index].gamepad;
+        log << "# xinput_slot_" << index << "=connected packet="
+            << xinputStates[index].packetNumber << " rx="
+            << gamepad.thumbRX << " ry=" << gamepad.thumbRY
+            << " lx=" << gamepad.thumbLX << " ly=" << gamepad.thumbLY
+            << " buttons=0x" << std::hex << gamepad.buttons << std::dec
+            << '\n';
+    }
+    log << "time_ms,event,sequence,requested_rx,applied_rx,vigem_error,"
+           "plugin_heartbeat_age_ms,companion_loop_delay_ms,skyrim_running,"
+           "watchdog_active,xinput_slot_mask,vigem_user_index\n";
     log.flush();
 
     std::cout << "Virtual Xbox 360 controller is ready.\n";
+    std::cout << "ViGEm XInput user index: "
+              << state->vigemUserIndex << "\n";
     std::cout << "Waiting for SkyrimVR.exe... Press Ctrl+C to stop.\n";
     std::cout << "Applied reports are logged to "
               << logPath.string() << "\n";
@@ -307,9 +430,15 @@ int main()
     bool skyrimRunning = false;
     auto lastProcessCheck = std::uint64_t{ 0 };
     auto lastSequence = std::uint32_t{ 0 };
+    auto previousXInputMask = xinputMask;
+    auto lastXInputCheck = std::uint64_t{ 0 };
+    auto previousLoop = GetTickCount64();
+    bool previousWatchdog = true;
 
     while (g_running.load()) {
         const auto now = GetTickCount64();
+        const auto loopDelay = now - previousLoop;
+        previousLoop = now;
         InterlockedExchange64(
             reinterpret_cast<volatile LONG64*>(
                 &state->companionHeartbeatMilliseconds),
@@ -327,13 +456,45 @@ int main()
                 break;
             }
         }
+        if (now - lastXInputCheck >= 1000) {
+            lastXInputCheck = now;
+            xinputMask = ReadXInputSlots(xinput, xinputStates);
+            InterlockedExchange(
+                reinterpret_cast<volatile LONG*>(
+                    &state->connectedXInputSlots),
+                static_cast<LONG>(xinputMask));
+            if (xinputMask != previousXInputMask) {
+                log << now << ",xinput_slots_changed,0,0,0,0,0,"
+                    << loopDelay << ',' << skyrimRunning << ",0,0x"
+                    << std::hex << xinputMask << std::dec << ','
+                    << state->vigemUserIndex << '\n';
+                log.flush();
+                previousXInputMask = xinputMask;
+            }
+        }
 
         const auto heartbeat = AtomicRead64(state->heartbeatMilliseconds);
         auto desiredStick = AtomicRead32(state->stickRX);
         const auto sequence = AtomicReadUnsigned32(state->sequence);
-        if (heartbeat == 0 ||
-            now - heartbeat >
-                HDT::CompanionProtocol::watchdogMilliseconds) {
+        const auto heartbeatAge =
+            heartbeat != 0 && now >= heartbeat ? now - heartbeat : 0;
+        const auto watchdog =
+            heartbeat == 0 ||
+            heartbeatAge > HDT::CompanionProtocol::watchdogMilliseconds;
+        InterlockedExchange(
+            reinterpret_cast<volatile LONG*>(&state->watchdogActive),
+            watchdog ? 1 : 0);
+        if (watchdog != previousWatchdog) {
+            log << now << ",watchdog_" << (watchdog ? "active" : "clear")
+                << ',' << sequence << ',' << desiredStick
+                << ",0,0," << heartbeatAge << ',' << loopDelay << ','
+                << skyrimRunning << ',' << watchdog << ",0x" << std::hex
+                << xinputMask << std::dec << ',' << state->vigemUserIndex
+                << '\n';
+            log.flush();
+            previousWatchdog = watchdog;
+        }
+        if (watchdog) {
             desiredStick = 0;
         }
         desiredStick = std::clamp(desiredStick, -32768, 32767);
@@ -357,8 +518,12 @@ int main()
             InterlockedExchange(
                 reinterpret_cast<volatile LONG*>(&state->appliedSequence),
                 static_cast<LONG>(sequence));
-            log << now << ',' << sequence << ',' << desiredStick << ','
-                << desiredStick << ',' << error << '\n';
+            log << now << ",report," << sequence << ',' << desiredStick
+                << ',' << desiredStick << ",0x" << std::hex << error
+                << std::dec << ',' << heartbeatAge << ',' << loopDelay
+                << ',' << skyrimRunning << ',' << watchdog << ",0x"
+                << std::hex << xinputMask << std::dec << ','
+                << state->vigemUserIndex << '\n';
             log.flush();
             lastSequence = sequence;
         }
@@ -374,6 +539,9 @@ int main()
     vigem.targetFree(target);
     vigem.disconnect(client);
     vigem.free(client);
+    if (xinput.module) {
+        FreeLibrary(xinput.module);
+    }
     FreeLibrary(vigem.module);
     return 0;
 }
