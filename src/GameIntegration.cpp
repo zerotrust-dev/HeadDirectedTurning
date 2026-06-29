@@ -303,6 +303,52 @@ namespace HDT
                 "player update hook active; poseAvailable={} focused={}",
                 integration.ReadPose().has_value(),
                 integration.IsGameFocused());
+            if (integration.companionState_) {
+                const auto state =
+                    static_cast<CompanionProtocol::State*>(
+                        integration.companionState_);
+                const auto requested = InterlockedCompareExchange(
+                    reinterpret_cast<volatile LONG*>(&state->stickRX),
+                    0,
+                    0);
+                const auto sequence = InterlockedCompareExchange(
+                    reinterpret_cast<volatile LONG*>(&state->sequence),
+                    0,
+                    0);
+                const auto applied = InterlockedCompareExchange(
+                    reinterpret_cast<volatile LONG*>(
+                        &state->appliedStickRX),
+                    0,
+                    0);
+                const auto appliedSequence = InterlockedCompareExchange(
+                    reinterpret_cast<volatile LONG*>(
+                        &state->appliedSequence),
+                    0,
+                    0);
+                const auto error = InterlockedCompareExchange(
+                    reinterpret_cast<volatile LONG*>(
+                        &state->lastViGEmError),
+                    0,
+                    0);
+                const auto companionHeartbeat =
+                    static_cast<std::uint64_t>(InterlockedCompareExchange64(
+                        reinterpret_cast<volatile LONG64*>(
+                            &state->companionHeartbeatMilliseconds),
+                        0,
+                        0));
+                const auto age = GetTickCount64() >= companionHeartbeat ?
+                    GetTickCount64() - companionHeartbeat :
+                    0;
+                logger::debug(
+                    "companion status requestedRX={} seq={} appliedRX={} "
+                    "appliedSeq={} vigemError=0x{:08x} heartbeatAge={}ms",
+                    requested,
+                    sequence,
+                    applied,
+                    appliedSequence,
+                    static_cast<std::uint32_t>(error),
+                    age);
+            }
             integration.hookLogAccumulator_ = 0.0F;
         }
     }

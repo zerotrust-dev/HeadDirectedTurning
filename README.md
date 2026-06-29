@@ -30,6 +30,9 @@ Launch the companion before starting Skyrim VR. Keep it running while playing.
 It creates the virtual Xbox controller early enough for Skyrim to discover it,
 then receives only the right-stick value from the SKSE plugin. The companion
 centers the stick automatically if plugin updates stop and exits after Skyrim.
+It writes applied ViGEm reports to
+`Tools\HeadDirectedTurning\HeadDirectedTurningCompanion.log`; the SKSE log also
+records requested and acknowledged stick values once per second.
 
 Add the companion as an MO2 executable or launch it manually before starting
 SKSE. ViGEmBus must already be installed.

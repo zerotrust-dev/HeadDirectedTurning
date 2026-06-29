@@ -9,6 +9,7 @@
 #include <chrono>
 #include <cstdint>
 #include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <string_view>
 #include <thread>
@@ -163,6 +164,16 @@ namespace
             0);
     }
 
+    [[nodiscard]] std::uint32_t AtomicReadUnsigned32(
+        const std::uint32_t& value)
+    {
+        return static_cast<std::uint32_t>(InterlockedCompareExchange(
+            reinterpret_cast<volatile LONG*>(
+                const_cast<std::uint32_t*>(&value)),
+            0,
+            0));
+    }
+
     [[nodiscard]] std::uint64_t AtomicRead64(
         const std::uint64_t& value)
     {
@@ -224,6 +235,21 @@ int main()
         return 1;
     }
 
+    // Match vgamepad.VX360Gamepad construction exactly: create a persistent
+    // zeroed report and submit it once immediately after attaching the target.
+    XusbReport report{};
+    error = vigem.targetX360Update(client, target, report);
+    if (error != kViGEmErrorNone) {
+        std::cerr << "Initial centered report failed (0x" << std::hex
+                  << error << std::dec << ").\n";
+        vigem.targetRemove(client, target);
+        vigem.targetFree(target);
+        vigem.disconnect(client);
+        vigem.free(client);
+        FreeLibrary(vigem.module);
+        return 1;
+    }
+
     const auto mapping = CreateFileMappingW(
         INVALID_HANDLE_VALUE,
         nullptr,
@@ -266,17 +292,28 @@ int main()
     state->magicValue = HDT::CompanionProtocol::magic;
     state->versionValue = HDT::CompanionProtocol::version;
 
+    const auto logPath =
+        ExecutableDirectory() / L"HeadDirectedTurningCompanion.log";
+    std::ofstream log(logPath, std::ios::trunc);
+    log << "time_ms,sequence,requested_rx,applied_rx,vigem_error\n";
+    log.flush();
+
     std::cout << "Virtual Xbox 360 controller is ready.\n";
     std::cout << "Waiting for SkyrimVR.exe... Press Ctrl+C to stop.\n";
+    std::cout << "Applied reports are logged to "
+              << logPath.string() << "\n";
 
     bool sawSkyrim = false;
     bool skyrimRunning = false;
     auto lastProcessCheck = std::uint64_t{ 0 };
-    auto lastReportTime = std::uint64_t{ 0 };
-    auto lastStick = std::int32_t{ 0 };
+    auto lastSequence = std::uint32_t{ 0 };
 
     while (g_running.load()) {
         const auto now = GetTickCount64();
+        InterlockedExchange64(
+            reinterpret_cast<volatile LONG64*>(
+                &state->companionHeartbeatMilliseconds),
+            static_cast<LONG64>(now));
         if (now - lastProcessCheck >= 250) {
             lastProcessCheck = now;
             const auto runningNow = IsSkyrimRunning();
@@ -293,32 +330,44 @@ int main()
 
         const auto heartbeat = AtomicRead64(state->heartbeatMilliseconds);
         auto desiredStick = AtomicRead32(state->stickRX);
-        if (!skyrimRunning ||
-            heartbeat == 0 ||
+        const auto sequence = AtomicReadUnsigned32(state->sequence);
+        if (heartbeat == 0 ||
             now - heartbeat >
                 HDT::CompanionProtocol::watchdogMilliseconds) {
             desiredStick = 0;
         }
         desiredStick = std::clamp(desiredStick, -32768, 32767);
 
-        if (desiredStick != lastStick || now - lastReportTime >= 100) {
-            XusbReport report{};
+        // vgamepad calls update for every new source sample, even when the
+        // numerical axis value did not change. Mirror that behavior exactly.
+        if (sequence != lastSequence) {
             report.thumbRX = static_cast<std::int16_t>(desiredStick);
             error = vigem.targetX360Update(client, target, report);
+            InterlockedExchange(
+                reinterpret_cast<volatile LONG*>(&state->lastViGEmError),
+                static_cast<LONG>(error));
             if (error != kViGEmErrorNone) {
                 std::cerr << "ViGEm update failed (0x" << std::hex
                           << error << std::dec << ").\n";
                 break;
             }
-            lastStick = desiredStick;
-            lastReportTime = now;
+            InterlockedExchange(
+                reinterpret_cast<volatile LONG*>(&state->appliedStickRX),
+                desiredStick);
+            InterlockedExchange(
+                reinterpret_cast<volatile LONG*>(&state->appliedSequence),
+                static_cast<LONG>(sequence));
+            log << now << ',' << sequence << ',' << desiredStick << ','
+                << desiredStick << ',' << error << '\n';
+            log.flush();
+            lastSequence = sequence;
         }
 
         std::this_thread::sleep_for(std::chrono::milliseconds(4));
     }
 
-    XusbReport centered{};
-    vigem.targetX360Update(client, target, centered);
+    report = {};
+    vigem.targetX360Update(client, target, report);
     UnmapViewOfFile(state);
     CloseHandle(mapping);
     vigem.targetRemove(client, target);
