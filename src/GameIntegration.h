@@ -14,6 +14,11 @@ namespace HDT
 
     // All runtime-sensitive Skyrim VR access belongs behind this boundary.
     // Keep raw offsets, hooks, VR nodes, and player rotation out of control logic.
+    //
+    // Turn output is delivered through the standard XInput gamepad right stick,
+    // not the OpenVR VR-controller axis. Skyrim VR turns from a connected
+    // gamepad's right stick (proven on this rig by the earlier ViGEm projects),
+    // and that path is independent of Pimax/OpenComposite VR-controller routing.
     class GameIntegration :
         public RE::BSTEventSink<RE::InputEvent*>
     {
@@ -32,40 +37,24 @@ namespace HDT
 
     private:
         using PlayerUpdate = void(RE::Actor*, float);
-        struct ControllerAxis
-        {
-            float x;
-            float y;
-        };
-        struct ControllerState
-        {
-            std::uint32_t packetNumber;
-            std::uint32_t pad04;
-            std::uint64_t buttonsPressed;
-            std::uint64_t buttonsTouched;
-            ControllerAxis axes[5];
-        };
-        static_assert(sizeof(ControllerState) == 0x40);
-        using GetControllerState = bool(
-            void*,
-            std::uint32_t,
-            ControllerState*,
-            std::uint32_t);
+        // Matches WINAPI XInputGetState(DWORD, XINPUT_STATE*). The state pointer
+        // is kept opaque here so this header stays free of <Xinput.h>; the
+        // implementation casts it to XINPUT_STATE*.
+        using XInputGetStateFn =
+            std::uint32_t(__stdcall*)(std::uint32_t, void*);
 
         static void PlayerUpdateHook(RE::Actor* actor, float deltaSeconds);
-        static bool GetControllerStateHook(
-            void* vrSystem,
-            std::uint32_t deviceIndex,
-            ControllerState* state,
-            std::uint32_t stateSize);
-        bool InstallControllerStateHook();
+        static std::uint32_t __stdcall XInputGetStateHook(
+            std::uint32_t userIndex,
+            void* state);
+        bool InstallXInputHook();
         void UpdateAutomaticCenter(float deltaSeconds);
         [[nodiscard]] std::optional<PoseSample> ReadRawPose() const;
 
         REL::Relocation<PlayerUpdate*> originalPlayerUpdate_;
-        REL::Relocation<GetControllerState*> originalGetControllerState_;
+        XInputGetStateFn realXInputGetState_{ nullptr };
         std::atomic<float> requestedTurnInput_{ 0.0F };
-        std::uint32_t rightControllerIndex_{ UINT32_MAX };
+        std::atomic<std::uint32_t> syntheticPacket_{ 0 };
         float hookLogAccumulator_{ 0.0F };
         float calibrationElapsed_{ 0.0F };
         float calibrationSinSum_{ 0.0F };
@@ -73,8 +62,6 @@ namespace HDT
         std::uint32_t calibrationSamples_{ 0 };
         std::optional<float> centerOffsetDegrees_;
         std::uint32_t tracedThumbstickEvents_{ 0 };
-        std::atomic<std::uint32_t> controllerStateTraceCalls_{ 0 };
-        std::atomic<std::uint32_t> movingAxisTraceLines_{ 0 };
         std::atomic<std::uint32_t> injectionTraceLines_{ 0 };
         bool outputReady_{ false };
         bool initialized_{ false };

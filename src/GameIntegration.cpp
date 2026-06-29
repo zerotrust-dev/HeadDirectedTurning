@@ -2,6 +2,8 @@
 #include "PoseMath.h"
 #include "TurnController.h"
 
+#include <Xinput.h>
+
 namespace HDT
 {
     GameIntegration& GameIntegration::GetSingleton()
@@ -37,10 +39,11 @@ namespace HDT
             return false;
         }
         inputManager->AddEventSink(this);
-        outputReady_ = InstallControllerStateHook();
+
+        outputReady_ = InstallXInputHook();
         if (!outputReady_) {
             logger::warn(
-                "OpenVR controller-state output unavailable; diagnostic mode remains usable");
+                "XInput gamepad hook unavailable; diagnostic mode remains usable");
         }
 
         // Actor::Update is slot 0xAF in Skyrim VR. The relocation resolves the
@@ -132,189 +135,120 @@ namespace HDT
         return outputReady_ || normalizedInput == 0.0F;
     }
 
-    bool GameIntegration::InstallControllerStateHook()
+    bool GameIntegration::InstallXInputHook()
     {
-        constexpr std::size_t managerVRSystemIndex = 1;
-        constexpr std::size_t managerFakeVRSystemIndex = 3;
-        constexpr std::size_t getControllerRoleIndex = 18;
-        constexpr std::size_t getControllerStateIndex = 34;
-        constexpr std::uint32_t rightHandRole = 2;
+        // Skyrim polls the gamepad through XInputGetState. We patch the main
+        // module's import table entry so every poll passes through our hook,
+        // which adds the head-turn value to the right stick. Matching by the
+        // resolved function address avoids name/ordinal ambiguity and works for
+        // whichever XInput version the game actually imports.
+        static constexpr const char* candidates[] = {
+            "XInput1_4.dll",
+            "XInput1_3.dll",
+            "XInput9_1_0.dll"
+        };
 
-        const auto toolsModule = GetModuleHandleA("skyrimvrtools.dll");
-        if (!toolsModule) {
-            logger::warn("skyrimvrtools.dll is not loaded");
+        const auto base = reinterpret_cast<std::uintptr_t>(GetModuleHandleW(nullptr));
+        if (base == 0) {
+            logger::warn("unable to resolve main module base");
             return false;
         }
 
-        using GetHookManager = void* (*)();
-        const auto getHookManager = reinterpret_cast<GetHookManager>(
-            GetProcAddress(toolsModule, "GetVRHookManager"));
-        if (!getHookManager) {
-            logger::warn("SkyrimVRTools does not export GetVRHookManager");
+        const auto dosHeader = reinterpret_cast<IMAGE_DOS_HEADER*>(base);
+        const auto ntHeaders =
+            reinterpret_cast<IMAGE_NT_HEADERS*>(base + dosHeader->e_lfanew);
+        const auto& importDir =
+            ntHeaders->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_IMPORT];
+        if (importDir.VirtualAddress == 0) {
+            logger::warn("main module has no import directory");
             return false;
         }
 
-        const auto manager = static_cast<void**>(getHookManager());
-        if (!manager) {
-            logger::warn("SkyrimVRTools hook manager is unavailable");
-            return false;
-        }
-
-        const auto realVRSystem = static_cast<void**>(manager[managerVRSystemIndex]);
-        const auto fakeVRSystem = static_cast<void**>(manager[managerFakeVRSystemIndex]);
-        if (!realVRSystem || !fakeVRSystem || !*realVRSystem || !*fakeVRSystem) {
-            logger::warn("SkyrimVRTools OpenVR systems are not initialized");
-            return false;
-        }
-
-        using GetControllerIndexForRole = std::uint32_t(void*, std::uint32_t);
-        const auto realVtable = *reinterpret_cast<std::uintptr_t**>(realVRSystem);
-        const auto getControllerIndexForRole =
-            reinterpret_cast<GetControllerIndexForRole*>(
-                realVtable[getControllerRoleIndex]);
-        rightControllerIndex_ =
-            getControllerIndexForRole(realVRSystem, rightHandRole);
-        if (rightControllerIndex_ == UINT32_MAX) {
-            logger::warn("OpenVR right controller index is invalid");
-            return false;
-        }
-
-        const auto fakeVtableEntries =
-            *reinterpret_cast<std::uintptr_t**>(fakeVRSystem);
-        HMODULE hookOwner{};
-        constexpr auto moduleFromAddress = 0x00000004;
-        constexpr auto unchangedReferenceCount = 0x00000002;
-        if (!GetModuleHandleExA(
-                moduleFromAddress | unchangedReferenceCount,
-                reinterpret_cast<LPCSTR>(
-                    fakeVtableEntries[getControllerStateIndex]),
-                &hookOwner) ||
-            hookOwner != toolsModule) {
-            logger::warn(
-                "GetControllerState slot is not owned by SkyrimVRTools");
-            return false;
-        }
-
-        const auto fakeVtableAddress =
-            reinterpret_cast<std::uintptr_t>(fakeVtableEntries);
-        REL::Relocation<std::uintptr_t> fakeVtable{ fakeVtableAddress };
-        originalGetControllerState_ = fakeVtable.write_vfunc(
-            getControllerStateIndex,
-            GetControllerStateHook);
-        if (originalGetControllerState_.address() == 0) {
-            logger::warn("Unable to hook SkyrimVRTools GetControllerState");
-            return false;
-        }
-
-        logger::info(
-            "OpenVR output initialized for right controller index {}",
-            rightControllerIndex_);
-        return true;
-    }
-
-    bool GameIntegration::GetControllerStateHook(
-        void* vrSystem,
-        std::uint32_t deviceIndex,
-        ControllerState* state,
-        std::uint32_t stateSize)
-    {
-        auto& integration = GetSingleton();
-        const auto result = integration.originalGetControllerState_(
-            vrSystem,
-            deviceIndex,
-            state,
-            stateSize);
-
-        constexpr std::uint32_t maximumTraceCalls = 120;
-        const auto traceCall =
-            integration.controllerStateTraceCalls_.fetch_add(
-                1,
-                std::memory_order_relaxed) +
-            1;
-        if (traceCall <= maximumTraceCalls) {
-            if (state && stateSize >= sizeof(ControllerState)) {
-                logger::debug(
-                    "GetControllerState call={} device={} size={} result={} "
-                    "a0=({:.3f},{:.3f}) a1=({:.3f},{:.3f}) "
-                    "a2=({:.3f},{:.3f}) a3=({:.3f},{:.3f}) "
-                    "a4=({:.3f},{:.3f})",
-                    traceCall,
-                    deviceIndex,
-                    stateSize,
-                    result,
-                    state->axes[0].x,
-                    state->axes[0].y,
-                    state->axes[1].x,
-                    state->axes[1].y,
-                    state->axes[2].x,
-                    state->axes[2].y,
-                    state->axes[3].x,
-                    state->axes[3].y,
-                    state->axes[4].x,
-                    state->axes[4].y);
-            } else {
-                logger::debug(
-                    "GetControllerState call={} device={} size={} result={} "
-                    "state={}",
-                    traceCall,
-                    deviceIndex,
-                    stateSize,
-                    result,
-                    state ? "present" : "null");
+        for (const auto moduleName : candidates) {
+            const auto xinputModule = GetModuleHandleA(moduleName);
+            if (!xinputModule) {
+                continue;
             }
-        }
+            const auto realProc = GetProcAddress(xinputModule, "XInputGetState");
+            if (!realProc) {
+                continue;
+            }
 
-        if (result && state && stateSize >= sizeof(ControllerState)) {
-            const auto hasRawAxisInput = std::ranges::any_of(
-                state->axes,
-                [](const ControllerAxis& axis) {
-                    return std::abs(axis.x) >= 0.05F ||
-                           std::abs(axis.y) >= 0.05F;
-                });
-            if (hasRawAxisInput) {
-                constexpr std::uint32_t maximumMovingAxisLines = 80;
-                const auto movingLine =
-                    integration.movingAxisTraceLines_.fetch_add(
-                        1,
-                        std::memory_order_relaxed) +
-                    1;
-                if (movingLine <= maximumMovingAxisLines) {
-                    logger::debug(
-                        "moving raw axes line={} device={} "
-                        "a0=({:.3f},{:.3f}) a1=({:.3f},{:.3f}) "
-                        "a2=({:.3f},{:.3f}) a3=({:.3f},{:.3f}) "
-                        "a4=({:.3f},{:.3f})",
-                        movingLine,
-                        deviceIndex,
-                        state->axes[0].x,
-                        state->axes[0].y,
-                        state->axes[1].x,
-                        state->axes[1].y,
-                        state->axes[2].x,
-                        state->axes[2].y,
-                        state->axes[3].x,
-                        state->axes[3].y,
-                        state->axes[4].x,
-                        state->axes[4].y);
+            auto descriptor = reinterpret_cast<IMAGE_IMPORT_DESCRIPTOR*>(
+                base + importDir.VirtualAddress);
+            for (; descriptor->Name != 0; ++descriptor) {
+                auto thunk = reinterpret_cast<IMAGE_THUNK_DATA*>(
+                    base + descriptor->FirstThunk);
+                for (; thunk->u1.Function != 0; ++thunk) {
+                    if (reinterpret_cast<FARPROC>(thunk->u1.Function) != realProc) {
+                        continue;
+                    }
+
+                    auto slot = &thunk->u1.Function;
+                    DWORD oldProtect = 0;
+                    if (!VirtualProtect(
+                            slot,
+                            sizeof(*slot),
+                            PAGE_READWRITE,
+                            &oldProtect)) {
+                        logger::warn("VirtualProtect failed for the XInput IAT slot");
+                        return false;
+                    }
+                    realXInputGetState_ =
+                        reinterpret_cast<XInputGetStateFn>(realProc);
+                    *slot = reinterpret_cast<std::uintptr_t>(&XInputGetStateHook);
+                    VirtualProtect(slot, sizeof(*slot), oldProtect, &oldProtect);
+
+                    logger::info(
+                        "XInput gamepad hook installed via {} (turn -> right stick)",
+                        moduleName);
+                    return true;
                 }
             }
         }
 
-        if (!result ||
-            !state ||
-            stateSize < sizeof(ControllerState) ||
-            deviceIndex != integration.rightControllerIndex_) {
+        logger::warn("XInputGetState import was not found in the main module");
+        return false;
+    }
+
+    std::uint32_t __stdcall GameIntegration::XInputGetStateHook(
+        std::uint32_t userIndex,
+        void* state)
+    {
+        auto& integration = GetSingleton();
+        auto result = integration.realXInputGetState_ ?
+            integration.realXInputGetState_(userIndex, state) :
+            static_cast<std::uint32_t>(ERROR_DEVICE_NOT_CONNECTED);
+
+        // Only synthesize on the primary pad slot, and only when we have a
+        // valid buffer to write into.
+        if (!state || userIndex != 0) {
             return result;
         }
 
+        auto inputState = static_cast<XINPUT_STATE*>(state);
         const auto requested = integration.requestedTurnInput_.load(
             std::memory_order_relaxed);
-        const auto originalAxis = state->axes[0].x;
-        state->axes[0].x = std::clamp(
-            originalAxis + requested,
-            -1.0F,
-            1.0F);
-        if (std::abs(requested) >= 0.001F) {
+
+        bool modified = false;
+
+        // Present a connected pad even when no physical/virtual gamepad exists,
+        // so Skyrim reads our synthetic right stick. This mirrors the ViGEm
+        // virtual pad that turned correctly on this rig.
+        if (result != ERROR_SUCCESS) {
+            ZeroMemory(&inputState->Gamepad, sizeof(XINPUT_GAMEPAD));
+            result = ERROR_SUCCESS;
+            modified = true;
+        }
+
+        if (requested != 0.0F) {
+            const auto before = static_cast<int>(inputState->Gamepad.sThumbRX);
+            auto value =
+                before + static_cast<int>(std::lround(requested * 32767.0F));
+            value = std::clamp(value, -32768, 32767);
+            inputState->Gamepad.sThumbRX = static_cast<SHORT>(value);
+            modified = true;
+
             constexpr std::uint32_t maximumInjectionLines = 120;
             const auto injectionLine =
                 integration.injectionTraceLines_.fetch_add(
@@ -323,15 +257,24 @@ namespace HDT
                 1;
             if (injectionLine <= maximumInjectionLines) {
                 logger::debug(
-                    "axis injection line={} device={} requested={:.3f} "
-                    "before={:.3f} after={:.3f}",
+                    "xinput inject line={} user={} requested={:.3f} "
+                    "beforeRX={} afterRX={}",
                     injectionLine,
-                    deviceIndex,
+                    userIndex,
                     requested,
-                    originalAxis,
-                    state->axes[0].x);
+                    before,
+                    value);
             }
         }
+
+        if (modified) {
+            inputState->dwPacketNumber =
+                integration.syntheticPacket_.fetch_add(
+                    1,
+                    std::memory_order_relaxed) +
+                1;
+        }
+
         return result;
     }
 
@@ -386,7 +329,6 @@ namespace HDT
                 integration.IsGameFocused());
             integration.hookLogAccumulator_ = 0.0F;
         }
-
     }
 
     void GameIntegration::UpdateAutomaticCenter(float deltaSeconds)
