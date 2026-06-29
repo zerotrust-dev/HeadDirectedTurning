@@ -16,10 +16,9 @@ namespace HDT
     // All runtime-sensitive Skyrim VR access belongs behind this boundary.
     // Keep raw offsets, hooks, VR nodes, and player rotation out of control logic.
     //
-    // Turn output is delivered through a ViGEm virtual Xbox 360 controller.
-    // The same mechanism (via vgamepad) drove turning correctly on this rig
-    // in the trackir and phone_imu projects. From every other mod's point of
-    // view the plugin is invisible: it just adds one more gamepad to Windows.
+    // Turn output is sent to the pre-launch companion over shared memory. The
+    // companion owns the ViGEm controller so it exists before Skyrim discovers
+    // input devices.
     class GameIntegration :
         public RE::BSTEventSink<RE::InputEvent*>
     {
@@ -42,17 +41,15 @@ namespace HDT
 
         ~GameIntegration();
         static void PlayerUpdateHook(RE::Actor* actor, float deltaSeconds);
-        bool InstallViGEmTarget();
-        void TeardownViGEmTarget();
+        bool ConnectCompanion();
+        void DisconnectCompanion();
         void UpdateAutomaticCenter(float deltaSeconds);
         [[nodiscard]] std::optional<PoseSample> ReadRawPose() const;
 
         REL::Relocation<PlayerUpdate*> originalPlayerUpdate_;
-        // PVIGEM_CLIENT / PVIGEM_TARGET kept opaque so this header doesn't
-        // pull in the ViGEmClient headers; the .cpp casts them.
-        void* vigemClient_{ nullptr };
-        void* vigemTarget_{ nullptr };
-        std::atomic<bool> vigemFailureLogged_{ false };
+        void* companionMapping_{ nullptr };
+        void* companionState_{ nullptr };
+        std::uint64_t lastCompanionRetryMilliseconds_{ 0 };
         float hookLogAccumulator_{ 0.0F };
         float calibrationElapsed_{ 0.0F };
         float calibrationSinSum_{ 0.0F };

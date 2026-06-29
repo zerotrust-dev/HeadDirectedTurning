@@ -24,6 +24,7 @@ target_sources(
     ${PROJECT_NAME}
     PRIVATE
         src/main.cpp
+        src/CompanionProtocol.h
         src/GameIntegration.cpp
         src/GameIntegration.h
         src/PoseMath.cpp
@@ -48,9 +49,31 @@ if(MSVC)
     target_compile_options(${PROJECT_NAME} PRIVATE /W4 /permissive- /EHsc)
 endif()
 
+add_executable(
+    HeadDirectedTurningCompanion
+    companion/main.cpp
+    src/CompanionProtocol.h
+)
+target_include_directories(HeadDirectedTurningCompanion PRIVATE src)
+target_compile_features(
+    HeadDirectedTurningCompanion
+    PRIVATE cxx_std_23
+)
+if(MSVC)
+    target_compile_options(
+        HeadDirectedTurningCompanion
+        PRIVATE /W4 /permissive- /EHsc
+    )
+endif()
+
 install(
     TARGETS ${PROJECT_NAME}
     RUNTIME DESTINATION SKSE/Plugins
+)
+
+install(
+    TARGETS HeadDirectedTurningCompanion
+    RUNTIME DESTINATION Tools/HeadDirectedTurning
 )
 
 install(
@@ -60,12 +83,12 @@ install(
 
 install(
     FILES vendor/vigemclient/x64/ViGEmClient.dll
-    DESTINATION SKSE/Plugins
+    DESTINATION Tools/HeadDirectedTurning
 )
 
 install(
     FILES vendor/vigemclient/NOTICE.txt
-    DESTINATION SKSE/Plugins
+    DESTINATION Tools/HeadDirectedTurning
 )
 
 include(CTest)

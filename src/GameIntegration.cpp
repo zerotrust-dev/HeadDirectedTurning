@@ -1,151 +1,7 @@
 #include "GameIntegration.h"
+#include "CompanionProtocol.h"
 #include "PoseMath.h"
 #include "TurnController.h"
-
-namespace
-{
-    using ViGEmError = std::uint32_t;
-
-    constexpr ViGEmError kViGEmErrorNone = 0x20000000;
-
-    struct ViGEmXusbReport
-    {
-        std::uint16_t buttons{};
-        std::uint8_t leftTrigger{};
-        std::uint8_t rightTrigger{};
-        std::int16_t thumbLX{};
-        std::int16_t thumbLY{};
-        std::int16_t thumbRX{};
-        std::int16_t thumbRY{};
-    };
-    static_assert(sizeof(ViGEmXusbReport) == 12);
-
-    struct ViGEmApi
-    {
-        using Alloc = void* (*)();
-        using Free = void (*)(void*);
-        using Connect = ViGEmError (*)(void*);
-        using Disconnect = void (*)(void*);
-        using TargetAlloc = void* (*)();
-        using TargetFree = void (*)(void*);
-        using TargetAdd = ViGEmError (*)(void*, void*);
-        using TargetRemove = ViGEmError (*)(void*, void*);
-        using TargetUpdate =
-            ViGEmError (*)(void*, void*, ViGEmXusbReport);
-
-        HMODULE module{ nullptr };
-        Alloc alloc{ nullptr };
-        Free free{ nullptr };
-        Connect connect{ nullptr };
-        Disconnect disconnect{ nullptr };
-        TargetAlloc targetX360Alloc{ nullptr };
-        TargetFree targetFree{ nullptr };
-        TargetAdd targetAdd{ nullptr };
-        TargetRemove targetRemove{ nullptr };
-        TargetUpdate targetX360Update{ nullptr };
-
-        [[nodiscard]] bool Complete() const
-        {
-            return module &&
-                alloc &&
-                free &&
-                connect &&
-                disconnect &&
-                targetX360Alloc &&
-                targetFree &&
-                targetAdd &&
-                targetRemove &&
-                targetX360Update;
-        }
-    };
-
-    ViGEmApi g_vigem;
-
-    [[nodiscard]] bool ViGEmSucceeded(ViGEmError error)
-    {
-        return error == kViGEmErrorNone;
-    }
-
-    [[nodiscard]] std::filesystem::path ViGEmClientPath()
-    {
-        HMODULE pluginModule = nullptr;
-        const auto address = reinterpret_cast<LPCWSTR>(
-            reinterpret_cast<std::uintptr_t>(&ViGEmClientPath));
-        if (!GetModuleHandleExW(
-                GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
-                    GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-                address,
-                &pluginModule)) {
-            return {};
-        }
-
-        std::wstring path(32768, L'\0');
-        const auto length = GetModuleFileNameW(
-            pluginModule,
-            path.data(),
-            static_cast<DWORD>(path.size()));
-        if (length == 0 || length >= path.size()) {
-            return {};
-        }
-        path.resize(length);
-        return std::filesystem::path(path).parent_path() / L"ViGEmClient.dll";
-    }
-
-    [[nodiscard]] bool LoadViGEmApi()
-    {
-        if (g_vigem.Complete()) {
-            return true;
-        }
-
-        const auto path = ViGEmClientPath();
-        if (path.empty()) {
-            logger::warn("unable to resolve the SKSE plugin directory");
-            return false;
-        }
-
-        g_vigem.module = LoadLibraryExW(
-            path.c_str(),
-            nullptr,
-            LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR |
-                LOAD_LIBRARY_SEARCH_SYSTEM32);
-        if (!g_vigem.module) {
-            logger::warn(
-                "unable to load {} (Win32 error {})",
-                path.string(),
-                GetLastError());
-            return false;
-        }
-
-        g_vigem.alloc = reinterpret_cast<ViGEmApi::Alloc>(
-            GetProcAddress(g_vigem.module, "vigem_alloc"));
-        g_vigem.free = reinterpret_cast<ViGEmApi::Free>(
-            GetProcAddress(g_vigem.module, "vigem_free"));
-        g_vigem.connect = reinterpret_cast<ViGEmApi::Connect>(
-            GetProcAddress(g_vigem.module, "vigem_connect"));
-        g_vigem.disconnect = reinterpret_cast<ViGEmApi::Disconnect>(
-            GetProcAddress(g_vigem.module, "vigem_disconnect"));
-        g_vigem.targetX360Alloc = reinterpret_cast<ViGEmApi::TargetAlloc>(
-            GetProcAddress(g_vigem.module, "vigem_target_x360_alloc"));
-        g_vigem.targetFree = reinterpret_cast<ViGEmApi::TargetFree>(
-            GetProcAddress(g_vigem.module, "vigem_target_free"));
-        g_vigem.targetAdd = reinterpret_cast<ViGEmApi::TargetAdd>(
-            GetProcAddress(g_vigem.module, "vigem_target_add"));
-        g_vigem.targetRemove = reinterpret_cast<ViGEmApi::TargetRemove>(
-            GetProcAddress(g_vigem.module, "vigem_target_remove"));
-        g_vigem.targetX360Update = reinterpret_cast<ViGEmApi::TargetUpdate>(
-            GetProcAddress(g_vigem.module, "vigem_target_x360_update"));
-
-        if (!g_vigem.Complete()) {
-            logger::warn("ViGEmClient.dll is missing one or more required exports");
-            FreeLibrary(g_vigem.module);
-            g_vigem = {};
-            return false;
-        }
-
-        logger::info("ViGEmClient runtime loaded from {}", path.string());
-        return true;
-    }
-}
 
 namespace HDT
 {
@@ -157,7 +13,7 @@ namespace HDT
 
     GameIntegration::~GameIntegration()
     {
-        TeardownViGEmTarget();
+        DisconnectCompanion();
     }
 
     bool GameIntegration::InitializeOutput()
@@ -166,10 +22,11 @@ namespace HDT
             return outputReady_;
         }
         outputInitialized_ = true;
-        outputReady_ = InstallViGEmTarget();
+        outputReady_ = ConnectCompanion();
         if (!outputReady_) {
             logger::warn(
-                "ViGEm output unavailable; diagnostic mode remains usable");
+                "companion output unavailable; start HeadDirectedTurningCompanion "
+                "before Skyrim");
         }
         return outputReady_;
     }
@@ -289,27 +146,28 @@ namespace HDT
     {
         normalizedInput = std::clamp(normalizedInput, -1.0F, 1.0F);
 
-        if (!outputReady_ || !vigemClient_ || !vigemTarget_) {
+        const auto now = GetTickCount64();
+        if (!outputReady_ && now - lastCompanionRetryMilliseconds_ >= 1000) {
+            lastCompanionRetryMilliseconds_ = now;
+            outputReady_ = ConnectCompanion();
+        }
+        if (!outputReady_ || !companionState_) {
             return normalizedInput == 0.0F;
         }
 
-        ViGEmXusbReport report{};
+        auto state = static_cast<CompanionProtocol::State*>(companionState_);
         const auto scaled = std::lround(normalizedInput * 32767.0F);
-        report.thumbRX = static_cast<std::int16_t>(
+        const auto stickRX = static_cast<LONG>(
             std::clamp<long>(scaled, -32768L, 32767L));
-
-        const auto err = g_vigem.targetX360Update(
-            vigemClient_,
-            vigemTarget_,
-            report);
-        if (!ViGEmSucceeded(err)) {
-            if (!vigemFailureLogged_.exchange(true, std::memory_order_relaxed)) {
-                logger::error(
-                    "ViGEm update failed (0x{:08x}); turning output disabled",
-                    static_cast<std::uint32_t>(err));
-            }
-            return false;
-        }
+        InterlockedExchange(
+            reinterpret_cast<volatile LONG*>(&state->stickRX),
+            stickRX);
+        InterlockedExchange64(
+            reinterpret_cast<volatile LONG64*>(
+                &state->heartbeatMilliseconds),
+            static_cast<LONG64>(now));
+        InterlockedIncrement(
+            reinterpret_cast<volatile LONG*>(&state->sequence));
 
         if (std::abs(normalizedInput) >= 0.001F) {
             constexpr std::uint32_t maximumInjectionLines = 120;
@@ -320,81 +178,80 @@ namespace HDT
                 1;
             if (line <= maximumInjectionLines) {
                 logger::debug(
-                    "vigem inject line={} requested={:.3f} sThumbRX={}",
+                    "companion output line={} requested={:.3f} sThumbRX={}",
                     line,
                     normalizedInput,
-                    static_cast<int>(report.thumbRX));
+                    stickRX);
             }
         }
         return true;
     }
 
-    bool GameIntegration::InstallViGEmTarget()
+    bool GameIntegration::ConnectCompanion()
     {
-        // Allocate client and connect to the ViGEmBus kernel driver. Failure
-        // here almost always means the driver is not installed.
-        if (!LoadViGEmApi()) {
+        if (companionMapping_ && companionState_) {
+            return true;
+        }
+
+        const auto mapping = OpenFileMappingW(
+            FILE_MAP_READ | FILE_MAP_WRITE,
+            FALSE,
+            CompanionProtocol::mappingName);
+        if (!mapping) {
             return false;
         }
 
-        auto client = g_vigem.alloc();
-        if (!client) {
-            logger::warn("ViGEm client allocation failed");
-            return false;
-        }
-        auto err = g_vigem.connect(client);
-        if (!ViGEmSucceeded(err)) {
-            logger::warn(
-                "ViGEmBus connection failed (0x{:08x}); install the ViGEmBus "
-                "driver from https://github.com/nefarius/ViGEmBus/releases",
-                static_cast<std::uint32_t>(err));
-            g_vigem.free(client);
+        const auto state = static_cast<CompanionProtocol::State*>(
+            MapViewOfFile(
+                mapping,
+                FILE_MAP_READ | FILE_MAP_WRITE,
+                0,
+                0,
+                sizeof(CompanionProtocol::State)));
+        if (!state) {
+            CloseHandle(mapping);
             return false;
         }
 
-        auto target = g_vigem.targetX360Alloc();
-        if (!target) {
-            logger::warn("ViGEm target_x360 allocation failed");
-            g_vigem.disconnect(client);
-            g_vigem.free(client);
-            return false;
-        }
-        err = g_vigem.targetAdd(client, target);
-        if (!ViGEmSucceeded(err)) {
-            logger::warn(
-                "ViGEm target_add failed (0x{:08x})",
-                static_cast<std::uint32_t>(err));
-            g_vigem.targetFree(target);
-            g_vigem.disconnect(client);
-            g_vigem.free(client);
+        if (state->magicValue != CompanionProtocol::magic ||
+            state->versionValue != CompanionProtocol::version) {
+            logger::error(
+                "companion protocol mismatch: magic=0x{:08x} version={}",
+                state->magicValue,
+                state->versionValue);
+            UnmapViewOfFile(state);
+            CloseHandle(mapping);
             return false;
         }
 
-        vigemClient_ = client;
-        vigemTarget_ = target;
-        logger::info(
-            "ViGEm virtual Xbox 360 pad plugged in (turn -> right stick)");
+        companionMapping_ = mapping;
+        companionState_ = state;
+        InterlockedExchange(
+            reinterpret_cast<volatile LONG*>(&state->pluginProcessId),
+            static_cast<LONG>(GetCurrentProcessId()));
+        logger::info("connected to pre-launch companion output channel");
         return true;
     }
 
-    void GameIntegration::TeardownViGEmTarget()
+    void GameIntegration::DisconnectCompanion()
     {
-        if (vigemClient_ && vigemTarget_) {
-            (void)g_vigem.targetRemove(vigemClient_, vigemTarget_);
+        if (companionState_) {
+            auto state = static_cast<CompanionProtocol::State*>(companionState_);
+            InterlockedExchange(
+                reinterpret_cast<volatile LONG*>(&state->stickRX),
+                0);
+            InterlockedExchange64(
+                reinterpret_cast<volatile LONG64*>(
+                    &state->heartbeatMilliseconds),
+                0);
+            UnmapViewOfFile(state);
+            companionState_ = nullptr;
         }
-        if (vigemTarget_) {
-            g_vigem.targetFree(vigemTarget_);
-            vigemTarget_ = nullptr;
+        if (companionMapping_) {
+            CloseHandle(companionMapping_);
+            companionMapping_ = nullptr;
         }
-        if (vigemClient_) {
-            g_vigem.disconnect(vigemClient_);
-            g_vigem.free(vigemClient_);
-            vigemClient_ = nullptr;
-        }
-        if (g_vigem.module) {
-            FreeLibrary(g_vigem.module);
-            g_vigem = {};
-        }
+        outputReady_ = false;
     }
 
     RE::BSEventNotifyControl GameIntegration::ProcessEvent(

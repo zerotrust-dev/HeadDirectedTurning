@@ -20,6 +20,20 @@ See [`docs/COMPATIBILITY.md`](docs/COMPATIBILITY.md) for upgrade rules.
 Use [`docs/DIAGNOSTIC_TEST.md`](docs/DIAGNOSTIC_TEST.md) for the first in-game
 pose validation.
 
+## Required companion
+
+The MO2 package includes:
+
+`Tools\HeadDirectedTurning\HeadDirectedTurningCompanion.exe`
+
+Launch the companion before starting Skyrim VR. Keep it running while playing.
+It creates the virtual Xbox controller early enough for Skyrim to discover it,
+then receives only the right-stick value from the SKSE plugin. The companion
+centers the stick automatically if plugin updates stop and exits after Skyrim.
+
+Add the companion as an MO2 executable or launch it manually before starting
+SKSE. ViGEmBus must already be installed.
+
 ## Intended behavior
 
 - Head movement inside the configurable dead zone remains free look.

@@ -38,8 +38,8 @@ SKSEPluginLoad(const SKSE::LoadInterface* skse)
 
     SKSE::Init(skse);
 
-    // Create the virtual controller before Skyrim finishes discovering input
-    // devices. DataLoaded is too late on builds that stop polling absent pads.
+    // The companion must already own the virtual controller before Skyrim
+    // starts. Connect to its shared-memory output channel as early as possible.
     (void)HDT::GameIntegration::GetSingleton().InitializeOutput();
 
     const auto messaging = SKSE::GetMessagingInterface();
