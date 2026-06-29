@@ -137,11 +137,13 @@ namespace HDT
 
     bool GameIntegration::InstallXInputHook()
     {
-        // Skyrim polls the gamepad through XInputGetState. We patch the main
-        // module's import table entry so every poll passes through our hook,
-        // which adds the head-turn value to the right stick. Matching by the
-        // resolved function address avoids name/ordinal ambiguity and works for
-        // whichever XInput version the game actually imports.
+        // Skyrim polls the gamepad through XInput. Bethesda (like most XInput
+        // games) imports the undocumented XInputGetStateEx at ordinal 100,
+        // which reports the Xbox "Guide" button in addition to everything
+        // XInputGetState returns. Both functions take the same XINPUT_STATE
+        // pointer, so a single hook signature covers them. We patch every IAT
+        // slot in the main module that points to either function for whichever
+        // XInput DLL is loaded.
         static constexpr const char* candidates[] = {
             "XInput1_4.dll",
             "XInput1_3.dll",
@@ -164,13 +166,21 @@ namespace HDT
             return false;
         }
 
+        std::uint32_t patchedSlots = 0;
+        const char* installedVia = nullptr;
+        FARPROC realProcForCall = nullptr;
+
         for (const auto moduleName : candidates) {
             const auto xinputModule = GetModuleHandleA(moduleName);
             if (!xinputModule) {
                 continue;
             }
-            const auto realProc = GetProcAddress(xinputModule, "XInputGetState");
-            if (!realProc) {
+
+            // Resolve both bindings; either or both may exist in this DLL.
+            FARPROC namedProc = GetProcAddress(xinputModule, "XInputGetState");
+            FARPROC ordinalProc =
+                GetProcAddress(xinputModule, MAKEINTRESOURCEA(100));
+            if (!namedProc && !ordinalProc) {
                 continue;
             }
 
@@ -180,7 +190,9 @@ namespace HDT
                 auto thunk = reinterpret_cast<IMAGE_THUNK_DATA*>(
                     base + descriptor->FirstThunk);
                 for (; thunk->u1.Function != 0; ++thunk) {
-                    if (reinterpret_cast<FARPROC>(thunk->u1.Function) != realProc) {
+                    const auto current =
+                        reinterpret_cast<FARPROC>(thunk->u1.Function);
+                    if (current != namedProc && current != ordinalProc) {
                         continue;
                     }
 
@@ -191,24 +203,46 @@ namespace HDT
                             sizeof(*slot),
                             PAGE_READWRITE,
                             &oldProtect)) {
-                        logger::warn("VirtualProtect failed for the XInput IAT slot");
-                        return false;
+                        logger::warn(
+                            "VirtualProtect failed for an XInput IAT slot");
+                        continue;
                     }
-                    realXInputGetState_ =
-                        reinterpret_cast<XInputGetStateFn>(realProc);
                     *slot = reinterpret_cast<std::uintptr_t>(&XInputGetStateHook);
                     VirtualProtect(slot, sizeof(*slot), oldProtect, &oldProtect);
 
+                    // Forward to the same export the slot pointed at, so
+                    // ordinal-100 callers keep getting Guide-button data.
+                    if (!realProcForCall) {
+                        realProcForCall = current;
+                    }
+                    installedVia = moduleName;
+                    ++patchedSlots;
+
                     logger::info(
-                        "XInput gamepad hook installed via {} (turn -> right stick)",
-                        moduleName);
-                    return true;
+                        "XInput IAT slot patched: module={} {} addr={}",
+                        moduleName,
+                        (current == ordinalProc) ?
+                            "XInputGetStateEx(ord100)" :
+                            "XInputGetState(named)",
+                        reinterpret_cast<void*>(current));
                 }
             }
         }
 
-        logger::warn("XInputGetState import was not found in the main module");
-        return false;
+        if (patchedSlots == 0) {
+            logger::warn(
+                "no XInputGetState/Ex import was found in the main module");
+            return false;
+        }
+
+        realXInputGetState_ =
+            reinterpret_cast<XInputGetStateFn>(realProcForCall);
+        logger::info(
+            "XInput gamepad hook installed: {} slot(s) via {} "
+            "(turn -> right stick)",
+            patchedSlots,
+            installedVia ? installedVia : "?");
+        return true;
     }
 
     std::uint32_t __stdcall GameIntegration::XInputGetStateHook(
