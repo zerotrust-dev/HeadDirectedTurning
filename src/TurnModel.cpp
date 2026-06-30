@@ -71,7 +71,9 @@ namespace HDT
                 return 0.0F;
             }
             latchedMagnitude_ = magnitude;
-            peakMagnitude_ = std::max(peakMagnitude_, magnitude);
+            if (magnitude > peakMagnitude_) {
+                peakMagnitude_ = magnitude;
+            }
         }
 
         const auto range = parameters.maximumAngle - parameters.startAngle;
