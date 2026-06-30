@@ -119,19 +119,31 @@ namespace HDT
             return std::nullopt;
         }
 
-        RE::NiPoint3 hmdEuler{};
-        RE::NiPoint3 roomEuler{};
-        if (!vrNodes->UprightHmdNode->world.rotate.ToEulerAnglesXYZ(hmdEuler) ||
-            !vrNodes->RoomNode->world.rotate.ToEulerAnglesXYZ(roomEuler)) {
-            return std::nullopt;
-        }
+        const auto& hmdRotation =
+            vrNodes->UprightHmdNode->world.rotate;
+        const auto& roomRotation =
+            vrNodes->RoomNode->world.rotate;
+        const auto relativeRotation =
+            roomRotation.Transpose() * hmdRotation;
 
-        const auto hmdYaw = NormalizeDegrees(RadiansToDegrees(hmdEuler.z));
-        const auto bodyYaw = NormalizeDegrees(RadiansToDegrees(roomEuler.z));
+        // Extract yaw from each matrix's horizontal yaw terms. Most
+        // importantly, derive relative yaw from one room-relative matrix
+        // instead of subtracting two independently decomposed Euler angles.
+        // Euler branches diverge at high HMD pitch and previously made a
+        // forward-facing headset appear 80-166 degrees off-center.
+        const auto hmdYaw = ProjectedYawDegrees(
+            hmdRotation.entry[0][0],
+            hmdRotation.entry[0][1]);
+        const auto bodyYaw = ProjectedYawDegrees(
+            roomRotation.entry[0][0],
+            roomRotation.entry[0][1]);
+        const auto relativeYaw = ProjectedYawDegrees(
+            relativeRotation.entry[0][0],
+            relativeRotation.entry[0][1]);
         return PoseSample{
             hmdYaw,
             bodyYaw,
-            NormalizeDegrees(hmdYaw - bodyYaw)
+            relativeYaw
         };
     }
 

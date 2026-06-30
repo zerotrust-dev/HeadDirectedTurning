@@ -18,7 +18,7 @@ namespace HDT
         float smoothingSeconds{ 0.06F };
         float minimumStickOutput{ 0.45F };
         float outputScale{ 1.0F };
-        bool invertDirection{ false };
+        bool invertDirection{ true };
 
         bool pauseInMenus{ true };
         bool pauseWhenGameUnfocused{ false };

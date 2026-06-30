@@ -22,4 +22,14 @@ namespace HDT
         }
         return normalized;
     }
+
+    float ProjectedYawDegrees(float xAxisX, float xAxisY)
+    {
+        if (!std::isfinite(xAxisX) || !std::isfinite(xAxisY) ||
+            std::hypot(xAxisX, xAxisY) < 0.0001F) {
+            return 0.0F;
+        }
+        return NormalizeDegrees(
+            RadiansToDegrees(std::atan2(xAxisY, xAxisX)));
+    }
 }

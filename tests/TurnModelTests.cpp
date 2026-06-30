@@ -30,6 +30,11 @@ int main()
     assert(Near(HDT::NormalizeDegrees(180.0F), 180.0F));
     assert(Near(HDT::NormalizeDegrees(-180.0F), 180.0F));
     assert(Near(HDT::NormalizeDegrees(540.0F), 180.0F));
+    assert(Near(HDT::ProjectedYawDegrees(1.0F, 0.0F), 0.0F));
+    assert(Near(HDT::ProjectedYawDegrees(0.0F, 1.0F), 90.0F));
+    assert(Near(HDT::ProjectedYawDegrees(0.0F, -1.0F), -90.0F));
+    assert(Near(HDT::ProjectedYawDegrees(-1.0F, 0.0F), 180.0F));
+    assert(Near(HDT::ProjectedYawDegrees(0.0F, 0.0F), 0.0F));
     assert(Near(
         HDT::CalculateStickMagnitude(
             0.0F, 12.0F, 75.0F, 0.45F, 1.0F),
