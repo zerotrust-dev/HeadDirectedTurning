@@ -171,6 +171,12 @@ namespace HDT
         return std::hypot(velocity.x, velocity.y);
     }
 
+    bool GameIntegration::IsPlayerMoving() const
+    {
+        const auto player = RE::PlayerCharacter::GetSingleton();
+        return player && player->IsMoving();
+    }
+
     bool GameIntegration::IsLocomoting(
         float inputThreshold,
         float speedThreshold) const
@@ -184,7 +190,9 @@ namespace HDT
             now - lastInput <= inputFreshnessMilliseconds &&
             locomotionInputMagnitude_.load(std::memory_order_relaxed) >=
                 inputThreshold;
-        return inputMoving || PlanarSpeed() >= speedThreshold;
+        return inputMoving ||
+            IsPlayerMoving() ||
+            PlanarSpeed() >= speedThreshold;
     }
 
     bool GameIntegration::ApplyTurnInput(float normalizedInput)

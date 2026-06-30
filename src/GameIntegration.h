@@ -35,6 +35,7 @@ namespace HDT
         [[nodiscard]] bool IsLocomoting(
             float inputThreshold,
             float speedThreshold) const;
+        [[nodiscard]] bool IsPlayerMoving() const;
         [[nodiscard]] float PlanarSpeed() const;
         [[nodiscard]] bool ApplyTurnInput(float normalizedInput);
         RE::BSEventNotifyControl ProcessEvent(

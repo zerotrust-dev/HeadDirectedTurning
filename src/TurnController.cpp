@@ -62,6 +62,7 @@ namespace HDT
             settings.movementInputThreshold,
             settings.movementSpeedThreshold);
         const auto planarSpeed = integration.PlanarSpeed();
+        const auto nativeMoving = integration.IsPlayerMoving();
         logAccumulator_ += deltaSeconds;
         const auto logSample =
             settings.logPoseSamples && logAccumulator_ >= 0.25F;
@@ -69,7 +70,7 @@ namespace HDT
             logger::debug(
                 "raw pose hmd={:.2f} room={:.2f} tracking={:.2f} "
                 "roomRelative={:.2f} focused={} pause={} moving={} "
-                "planarSpeed={:.2f}",
+                "nativeMoving={} planarSpeed={:.2f}",
                 sample->hmdYawDegrees,
                 sample->bodyYawDegrees,
                 sample->relativeYawDegrees,
@@ -77,6 +78,7 @@ namespace HDT
                 integration.IsGameFocused(),
                 pauseReason,
                 locomoting,
+                nativeMoving,
                 planarSpeed);
             logAccumulator_ = 0.0F;
         }
