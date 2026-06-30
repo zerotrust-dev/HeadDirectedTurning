@@ -40,7 +40,7 @@ namespace HDT
                 latchedMagnitude_ = 0.0F;
                 return 0.0F;
             }
-        } else if (magnitude >= parameters.startAngle) {
+        } else if (magnitude > parameters.startAngle) {
             latchedDirection_ = std::copysign(1.0F, relativeYawDegrees);
             latchedMagnitude_ = magnitude;
         }

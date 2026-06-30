@@ -59,7 +59,8 @@ int main()
     HDT::TurnModel model;
 
     assert(Near(model.Calculate(14.9F, parameters), 0.0F));
-    assert(Near(model.Calculate(15.0F, parameters), 12.0F));
+    assert(Near(model.Calculate(15.0F, parameters), 0.0F));
+    assert(Near(model.Calculate(15.01F, parameters), 12.0F));
     assert(model.Calculate(30.0F, parameters) > 12.0F);
     assert(Near(model.Calculate(55.0F, parameters), 75.0F));
 
@@ -98,4 +99,23 @@ int main()
         stablePositiveSpeed));
     assert(Near(model.Calculate(5.99F, parameters), 0.0F));
     assert(model.Calculate(-31.38F, parameters) < 0.0F);
+
+    // With StopAngle equal to StartAngle, the complete +/-15 degree free-look
+    // zone stops output immediately after a turn has started.
+    constexpr HDT::TurnParameters fullDeadzoneStopParameters{
+        15.0F,
+        15.0F,
+        55.0F,
+        12.0F,
+        75.0F,
+        2.2F
+    };
+    model.Reset();
+    assert(model.Calculate(20.0F, fullDeadzoneStopParameters) > 0.0F);
+    assert(Near(
+        model.Calculate(15.0F, fullDeadzoneStopParameters),
+        0.0F));
+    assert(Near(
+        model.Calculate(-15.0F, fullDeadzoneStopParameters),
+        0.0F));
 }

@@ -10,7 +10,7 @@ namespace HDT
         bool logPoseSamples{ true };
 
         float startAngle{ 15.0F };
-        float stopAngle{ 11.0F };
+        float stopAngle{ 15.0F };
         float maximumAngle{ 55.0F };
         float minimumTurnSpeed{ 12.0F };
         float maximumTurnSpeed{ 75.0F };
@@ -18,7 +18,7 @@ namespace HDT
         float smoothingSeconds{ 0.06F };
         float minimumStickOutput{ 0.45F };
         float outputScale{ 1.0F };
-        bool invertDirection{ true };
+        bool invertDirection{ false };
 
         bool pauseInMenus{ true };
         bool pauseWhenGameUnfocused{ false };
