@@ -11,6 +11,7 @@ namespace HDT
         float hmdYawDegrees{};
         float bodyYawDegrees{};
         float relativeYawDegrees{};
+        float roomRelativeYawDegrees{};
     };
 
     // All runtime-sensitive Skyrim VR access belongs behind this boundary.
@@ -31,7 +32,10 @@ namespace HDT
         [[nodiscard]] const std::string& FailureReason() const;
         [[nodiscard]] std::optional<PoseSample> ReadPose() const;
         [[nodiscard]] bool IsGameFocused() const;
-        [[nodiscard]] bool IsLocomoting(float inputThreshold) const;
+        [[nodiscard]] bool IsLocomoting(
+            float inputThreshold,
+            float speedThreshold) const;
+        [[nodiscard]] float PlanarSpeed() const;
         [[nodiscard]] bool ApplyTurnInput(float normalizedInput);
         RE::BSEventNotifyControl ProcessEvent(
             RE::InputEvent* const* events,

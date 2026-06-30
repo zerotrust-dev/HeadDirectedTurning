@@ -14,6 +14,7 @@ namespace HDT
         float movingStartAngle{ 5.0F };
         float stopOnReturnDegrees{ 2.0F };
         float movementInputThreshold{ 0.15F };
+        float movementSpeedThreshold{ 5.0F };
         float maximumAngle{ 55.0F };
         float minimumTurnSpeed{ 12.0F };
         float maximumTurnSpeed{ 75.0F };

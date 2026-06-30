@@ -59,20 +59,25 @@ namespace HDT
         const auto& settings = Settings::GetSingleton();
         const auto pauseReason = GetPauseReason();
         const auto locomoting = integration.IsLocomoting(
-            settings.movementInputThreshold);
+            settings.movementInputThreshold,
+            settings.movementSpeedThreshold);
+        const auto planarSpeed = integration.PlanarSpeed();
         logAccumulator_ += deltaSeconds;
         const auto logSample =
             settings.logPoseSamples && logAccumulator_ >= 0.25F;
         if (logSample) {
             logger::debug(
-                "raw pose hmd={:.2f} room={:.2f} relative={:.2f} "
-                "focused={} pause={} moving={}",
+                "raw pose hmd={:.2f} room={:.2f} tracking={:.2f} "
+                "roomRelative={:.2f} focused={} pause={} moving={} "
+                "planarSpeed={:.2f}",
                 sample->hmdYawDegrees,
                 sample->bodyYawDegrees,
                 sample->relativeYawDegrees,
+                sample->roomRelativeYawDegrees,
                 integration.IsGameFocused(),
                 pauseReason,
-                locomoting);
+                locomoting,
+                planarSpeed);
             logAccumulator_ = 0.0F;
         }
 

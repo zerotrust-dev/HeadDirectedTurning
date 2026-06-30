@@ -121,6 +121,8 @@ namespace HDT
 
         const auto& hmdRotation =
             vrNodes->UprightHmdNode->world.rotate;
+        const auto& trackingRotation =
+            vrNodes->UprightHmdNode->local.rotate;
         const auto& roomRotation =
             vrNodes->RoomNode->world.rotate;
         const auto relativeRotation =
@@ -140,9 +142,13 @@ namespace HDT
         const auto relativeYaw = ProjectedYawDegrees(
             relativeRotation.entry[0][0],
             relativeRotation.entry[0][1]);
+        const auto trackingYaw = ProjectedYawDegrees(
+            trackingRotation.entry[0][0],
+            trackingRotation.entry[0][1]);
         return PoseSample{
             hmdYaw,
             bodyYaw,
+            trackingYaw,
             relativeYaw
         };
     }
@@ -154,17 +160,31 @@ namespace HDT
         return true;
     }
 
-    bool GameIntegration::IsLocomoting(float inputThreshold) const
+    float GameIntegration::PlanarSpeed() const
+    {
+        const auto player = RE::PlayerCharacter::GetSingleton();
+        if (!player) {
+            return 0.0F;
+        }
+        RE::NiPoint3 velocity{};
+        player->GetLinearVelocity(velocity);
+        return std::hypot(velocity.x, velocity.y);
+    }
+
+    bool GameIntegration::IsLocomoting(
+        float inputThreshold,
+        float speedThreshold) const
     {
         constexpr std::uint64_t inputFreshnessMilliseconds = 250;
         const auto lastInput = lastLocomotionInputMilliseconds_.load(
             std::memory_order_relaxed);
         const auto now = GetTickCount64();
-        return lastInput != 0 &&
+        const auto inputMoving = lastInput != 0 &&
             now >= lastInput &&
             now - lastInput <= inputFreshnessMilliseconds &&
             locomotionInputMagnitude_.load(std::memory_order_relaxed) >=
                 inputThreshold;
+        return inputMoving || PlanarSpeed() >= speedThreshold;
     }
 
     bool GameIntegration::ApplyTurnInput(float normalizedInput)

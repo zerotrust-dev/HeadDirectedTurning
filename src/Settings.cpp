@@ -66,6 +66,11 @@ namespace HDT
                 "Turning",
                 "MovementInputThreshold",
                 movementInputThreshold));
+        movementSpeedThreshold = static_cast<float>(
+            ini.GetDoubleValue(
+                "Turning",
+                "MovementSpeedThreshold",
+                movementSpeedThreshold));
         maximumAngle = static_cast<float>(ini.GetDoubleValue("Turning", "MaximumAngle", maximumAngle));
         minimumTurnSpeed = static_cast<float>(ini.GetDoubleValue("Turning", "MinimumTurnSpeed", minimumTurnSpeed));
         maximumTurnSpeed = static_cast<float>(ini.GetDoubleValue("Turning", "MaximumTurnSpeed", maximumTurnSpeed));
@@ -105,6 +110,10 @@ namespace HDT
             movementInputThreshold,
             0.0F,
             1.0F);
+        movementSpeedThreshold = std::clamp(
+            movementSpeedThreshold,
+            0.0F,
+            1000.0F);
         maximumAngle = std::clamp(maximumAngle, startAngle + 1.0F, 120.0F);
         minimumTurnSpeed = std::clamp(minimumTurnSpeed, 0.0F, 360.0F);
         maximumTurnSpeed = std::clamp(maximumTurnSpeed, minimumTurnSpeed, 720.0F);
