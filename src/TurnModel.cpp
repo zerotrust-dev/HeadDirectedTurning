@@ -34,18 +34,26 @@ namespace HDT
     {
         const auto magnitude = std::abs(relativeYawDegrees);
 
-        if (latchedDirection_ != 0.0F) {
+        if (phase_ == Phase::suppressed) {
+            if (magnitude <= parameters.startAngle) {
+                Reset();
+            }
+            return 0.0F;
+        }
+
+        if (phase_ == Phase::turning) {
             if (magnitude <= parameters.stopAngle) {
-                latchedDirection_ = 0.0F;
-                latchedMagnitude_ = 0.0F;
+                Reset();
                 return 0.0F;
             }
         } else if (magnitude > parameters.startAngle) {
             latchedDirection_ = std::copysign(1.0F, relativeYawDegrees);
             latchedMagnitude_ = magnitude;
+            peakMagnitude_ = magnitude;
+            phase_ = Phase::turning;
         }
 
-        if (latchedDirection_ == 0.0F) {
+        if (phase_ != Phase::turning) {
             return 0.0F;
         }
 
@@ -54,7 +62,16 @@ namespace HDT
         // last same-direction magnitude so the false sample cannot spike speed.
         if (std::signbit(relativeYawDegrees) ==
             std::signbit(latchedDirection_)) {
+            if (peakMagnitude_ - magnitude >=
+                parameters.stopOnReturnDegrees) {
+                latchedDirection_ = 0.0F;
+                latchedMagnitude_ = 0.0F;
+                peakMagnitude_ = 0.0F;
+                phase_ = Phase::suppressed;
+                return 0.0F;
+            }
             latchedMagnitude_ = magnitude;
+            peakMagnitude_ = std::max(peakMagnitude_, magnitude);
         }
 
         const auto range = parameters.maximumAngle - parameters.startAngle;
@@ -69,9 +86,16 @@ namespace HDT
         return speed * latchedDirection_;
     }
 
+    TurnModel::Phase TurnModel::GetPhase() const
+    {
+        return phase_;
+    }
+
     void TurnModel::Reset()
     {
         latchedDirection_ = 0.0F;
         latchedMagnitude_ = 0.0F;
+        peakMagnitude_ = 0.0F;
+        phase_ = Phase::idle;
     }
 }

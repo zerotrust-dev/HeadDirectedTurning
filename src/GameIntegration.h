@@ -31,6 +31,7 @@ namespace HDT
         [[nodiscard]] const std::string& FailureReason() const;
         [[nodiscard]] std::optional<PoseSample> ReadPose() const;
         [[nodiscard]] bool IsGameFocused() const;
+        [[nodiscard]] bool IsLocomoting(float inputThreshold) const;
         [[nodiscard]] bool ApplyTurnInput(float normalizedInput);
         RE::BSEventNotifyControl ProcessEvent(
             RE::InputEvent* const* events,
@@ -58,6 +59,8 @@ namespace HDT
         std::optional<float> centerOffsetDegrees_;
         std::uint32_t tracedThumbstickEvents_{ 0 };
         std::atomic<std::uint32_t> injectionTraceLines_{ 0 };
+        std::atomic<float> locomotionInputMagnitude_{ 0.0F };
+        std::atomic<std::uint64_t> lastLocomotionInputMilliseconds_{ 0 };
         bool outputInitialized_{ false };
         bool outputReady_{ false };
         bool initialized_{ false };

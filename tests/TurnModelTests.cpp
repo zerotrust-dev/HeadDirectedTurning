@@ -13,7 +13,8 @@ namespace
         55.0F,
         12.0F,
         75.0F,
-        2.2F
+        2.2F,
+        100.0F
     };
 
     bool Near(float actual, float expected, float tolerance = 0.001F)
@@ -108,7 +109,8 @@ int main()
         55.0F,
         12.0F,
         75.0F,
-        2.2F
+        2.2F,
+        100.0F
     };
     model.Reset();
     assert(model.Calculate(20.0F, fullDeadzoneStopParameters) > 0.0F);
@@ -118,4 +120,50 @@ int main()
     assert(Near(
         model.Calculate(-15.0F, fullDeadzoneStopParameters),
         0.0F));
+
+    // An active turn stops after a small deliberate return gesture and remains
+    // suppressed while the head is still outside the neutral zone.
+    constexpr HDT::TurnParameters returnGestureParameters{
+        15.0F,
+        15.0F,
+        55.0F,
+        12.0F,
+        75.0F,
+        2.2F,
+        2.0F
+    };
+    model.Reset();
+    assert(model.Calculate(20.0F, returnGestureParameters) > 0.0F);
+    assert(model.Calculate(25.0F, returnGestureParameters) > 0.0F);
+    assert(model.Calculate(23.1F, returnGestureParameters) > 0.0F);
+    assert(Near(
+        model.Calculate(23.0F, returnGestureParameters),
+        0.0F));
+    assert(
+        model.GetPhase() ==
+        HDT::TurnModel::Phase::suppressed);
+    assert(Near(
+        model.Calculate(30.0F, returnGestureParameters),
+        0.0F));
+    assert(Near(
+        model.Calculate(15.0F, returnGestureParameters),
+        0.0F));
+    assert(
+        model.GetPhase() ==
+        HDT::TurnModel::Phase::idle);
+    assert(model.Calculate(-20.0F, returnGestureParameters) < 0.0F);
+
+    constexpr HDT::TurnParameters movingParameters{
+        5.0F,
+        5.0F,
+        55.0F,
+        12.0F,
+        75.0F,
+        2.2F,
+        2.0F
+    };
+    model.Reset();
+    assert(Near(model.Calculate(5.0F, movingParameters), 0.0F));
+    assert(model.Calculate(5.1F, movingParameters) > 0.0F);
+    assert(Near(model.Calculate(5.0F, movingParameters), 0.0F));
 }

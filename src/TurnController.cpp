@@ -58,18 +58,21 @@ namespace HDT
 
         const auto& settings = Settings::GetSingleton();
         const auto pauseReason = GetPauseReason();
+        const auto locomoting = integration.IsLocomoting(
+            settings.movementInputThreshold);
         logAccumulator_ += deltaSeconds;
         const auto logSample =
             settings.logPoseSamples && logAccumulator_ >= 0.25F;
         if (logSample) {
             logger::debug(
                 "raw pose hmd={:.2f} room={:.2f} relative={:.2f} "
-                "focused={} pause={}",
+                "focused={} pause={} moving={}",
                 sample->hmdYawDegrees,
                 sample->bodyYawDegrees,
                 sample->relativeYawDegrees,
                 integration.IsGameFocused(),
-                pauseReason);
+                pauseReason,
+                locomoting);
             logAccumulator_ = 0.0F;
         }
 
@@ -80,13 +83,20 @@ namespace HDT
             return;
         }
 
+        const auto effectiveStartAngle = locomoting ?
+            settings.movingStartAngle :
+            settings.startAngle;
+        const auto effectiveStopAngle = locomoting ?
+            settings.movingStartAngle :
+            settings.stopAngle;
         const TurnParameters parameters{
-            settings.startAngle,
-            settings.stopAngle,
+            effectiveStartAngle,
+            effectiveStopAngle,
             settings.maximumAngle,
             settings.minimumTurnSpeed,
             settings.maximumTurnSpeed,
-            settings.accelerationCurve
+            settings.accelerationCurve,
+            settings.stopOnReturnDegrees
         };
         const auto targetSpeed = turnModel_.Calculate(sample->relativeYawDegrees, parameters);
         if (targetSpeed == 0.0F || settings.smoothingSeconds == 0.0F) {
@@ -114,11 +124,15 @@ namespace HDT
             if (logSample && std::abs(normalizedInput) >= 0.001F) {
                 logger::debug(
                     "turn output relative={:.2f} targetSpeed={:.2f} "
-                    "smoothedSpeed={:.2f} requested={:.3f}",
+                    "smoothedSpeed={:.2f} requested={:.3f} moving={} "
+                    "startAngle={:.2f} phase={}",
                     sample->relativeYawDegrees,
                     targetSpeed,
                     smoothedTurnSpeed_,
-                    normalizedInput);
+                    normalizedInput,
+                    locomoting,
+                    effectiveStartAngle,
+                    static_cast<std::int32_t>(turnModel_.GetPhase()));
             }
             if (!integration.ApplyTurnInput(normalizedInput)) {
                 logger::error("Rotation output failed; stopping controller");

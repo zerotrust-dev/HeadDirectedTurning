@@ -51,6 +51,21 @@ namespace HDT
 
         startAngle = static_cast<float>(ini.GetDoubleValue("Turning", "StartAngle", startAngle));
         stopAngle = static_cast<float>(ini.GetDoubleValue("Turning", "StopAngle", stopAngle));
+        movingStartAngle = static_cast<float>(
+            ini.GetDoubleValue(
+                "Turning",
+                "MovingStartAngle",
+                movingStartAngle));
+        stopOnReturnDegrees = static_cast<float>(
+            ini.GetDoubleValue(
+                "Turning",
+                "StopOnReturnDegrees",
+                stopOnReturnDegrees));
+        movementInputThreshold = static_cast<float>(
+            ini.GetDoubleValue(
+                "Turning",
+                "MovementInputThreshold",
+                movementInputThreshold));
         maximumAngle = static_cast<float>(ini.GetDoubleValue("Turning", "MaximumAngle", maximumAngle));
         minimumTurnSpeed = static_cast<float>(ini.GetDoubleValue("Turning", "MinimumTurnSpeed", minimumTurnSpeed));
         maximumTurnSpeed = static_cast<float>(ini.GetDoubleValue("Turning", "MaximumTurnSpeed", maximumTurnSpeed));
@@ -78,6 +93,18 @@ namespace HDT
     {
         startAngle = std::clamp(startAngle, 1.0F, 89.0F);
         stopAngle = std::clamp(stopAngle, 0.0F, startAngle);
+        movingStartAngle = std::clamp(
+            movingStartAngle,
+            1.0F,
+            startAngle);
+        stopOnReturnDegrees = std::clamp(
+            stopOnReturnDegrees,
+            0.25F,
+            15.0F);
+        movementInputThreshold = std::clamp(
+            movementInputThreshold,
+            0.0F,
+            1.0F);
         maximumAngle = std::clamp(maximumAngle, startAngle + 1.0F, 120.0F);
         minimumTurnSpeed = std::clamp(minimumTurnSpeed, 0.0F, 360.0F);
         maximumTurnSpeed = std::clamp(maximumTurnSpeed, minimumTurnSpeed, 720.0F);

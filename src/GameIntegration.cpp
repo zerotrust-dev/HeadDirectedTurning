@@ -154,6 +154,19 @@ namespace HDT
         return true;
     }
 
+    bool GameIntegration::IsLocomoting(float inputThreshold) const
+    {
+        constexpr std::uint64_t inputFreshnessMilliseconds = 250;
+        const auto lastInput = lastLocomotionInputMilliseconds_.load(
+            std::memory_order_relaxed);
+        const auto now = GetTickCount64();
+        return lastInput != 0 &&
+            now >= lastInput &&
+            now - lastInput <= inputFreshnessMilliseconds &&
+            locomotionInputMagnitude_.load(std::memory_order_relaxed) >=
+                inputThreshold;
+    }
+
     bool GameIntegration::ApplyTurnInput(float normalizedInput)
     {
         normalizedInput = std::clamp(normalizedInput, -1.0F, 1.0F);
@@ -270,7 +283,7 @@ namespace HDT
         RE::InputEvent* const* events,
         RE::BSTEventSource<RE::InputEvent*>*)
     {
-        if (!events || !*events || tracedThumbstickEvents_ >= 200) {
+        if (!events || !*events) {
             return RE::BSEventNotifyControl::kContinue;
         }
 
@@ -280,6 +293,21 @@ namespace HDT
             }
 
             const auto thumbstick = static_cast<RE::ThumbstickEvent*>(event);
+            if (std::string_view(thumbstick->userEvent.c_str()) ==
+                "Left Stick") {
+                locomotionInputMagnitude_.store(
+                    std::hypot(
+                        thumbstick->xValue,
+                        thumbstick->yValue),
+                    std::memory_order_relaxed);
+                lastLocomotionInputMilliseconds_.store(
+                    GetTickCount64(),
+                    std::memory_order_relaxed);
+            }
+
+            if (tracedThumbstickEvents_ >= 200) {
+                continue;
+            }
             if (std::abs(thumbstick->xValue) < 0.01F &&
                 std::abs(thumbstick->yValue) < 0.01F) {
                 continue;
