@@ -101,16 +101,12 @@ namespace HDT
             auto normalizedInput = 0.0F;
             if (smoothedTurnSpeed_ != 0.0F &&
                 settings.maximumTurnSpeed > 0.0F) {
-                const auto speedFraction = std::clamp(
-                    std::abs(smoothedTurnSpeed_) /
-                        settings.maximumTurnSpeed,
-                    0.0F,
-                    1.0F);
-                const auto stickMagnitude =
-                    settings.minimumStickOutput +
-                    (settings.outputScale -
-                        settings.minimumStickOutput) *
-                        speedFraction;
+                const auto stickMagnitude = CalculateStickMagnitude(
+                    smoothedTurnSpeed_,
+                    settings.minimumTurnSpeed,
+                    settings.maximumTurnSpeed,
+                    settings.minimumStickOutput,
+                    settings.outputScale);
                 normalizedInput =
                     direction *
                     std::copysign(stickMagnitude, smoothedTurnSpeed_);

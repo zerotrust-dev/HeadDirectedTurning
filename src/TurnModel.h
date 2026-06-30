@@ -2,6 +2,13 @@
 
 namespace HDT
 {
+    [[nodiscard]] float CalculateStickMagnitude(
+        float smoothedTurnSpeed,
+        float minimumTurnSpeed,
+        float maximumTurnSpeed,
+        float minimumStickOutput,
+        float maximumStickOutput);
+
     struct TurnParameters
     {
         float startAngle{};
@@ -19,6 +26,11 @@ namespace HDT
         void Reset();
 
     private:
-        bool turning_{ false };
+        // Direction is latched until the head returns inside stopAngle.
+        // Skyrim's own rotation changes the room-space reference while turning;
+        // accepting an opposite sign mid-turn creates a positive-feedback
+        // left/right oscillation.
+        float latchedDirection_{ 0.0F };
+        float latchedMagnitude_{ 0.0F };
     };
 }

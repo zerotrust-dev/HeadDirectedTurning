@@ -6,7 +6,7 @@ namespace HDT
     {
         std::uint32_t schemaVersion{ 1 };
         bool enabled{ true };
-        bool diagnosticOnly{ true };
+        bool diagnosticOnly{ false };
         bool logPoseSamples{ true };
 
         float startAngle{ 15.0F };
@@ -16,8 +16,8 @@ namespace HDT
         float maximumTurnSpeed{ 75.0F };
         float accelerationCurve{ 2.2F };
         float smoothingSeconds{ 0.06F };
-        float minimumStickOutput{ 0.20F };
-        float outputScale{ 0.35F };
+        float minimumStickOutput{ 0.45F };
+        float outputScale{ 1.0F };
         bool invertDirection{ false };
 
         bool pauseInMenus{ true };

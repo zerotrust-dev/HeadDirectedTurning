@@ -30,6 +30,26 @@ int main()
     assert(Near(HDT::NormalizeDegrees(180.0F), 180.0F));
     assert(Near(HDT::NormalizeDegrees(-180.0F), 180.0F));
     assert(Near(HDT::NormalizeDegrees(540.0F), 180.0F));
+    assert(Near(
+        HDT::CalculateStickMagnitude(
+            0.0F, 12.0F, 75.0F, 0.45F, 1.0F),
+        0.0F));
+    assert(Near(
+        HDT::CalculateStickMagnitude(
+            12.0F, 12.0F, 75.0F, 0.45F, 1.0F),
+        0.45F));
+    assert(Near(
+        HDT::CalculateStickMagnitude(
+            -12.0F, 12.0F, 75.0F, 0.45F, 1.0F),
+        0.45F));
+    assert(Near(
+        HDT::CalculateStickMagnitude(
+            75.0F, 12.0F, 75.0F, 0.45F, 1.0F),
+        1.0F));
+    assert(Near(
+        HDT::CalculateStickMagnitude(
+            100.0F, 12.0F, 75.0F, 0.45F, 1.0F),
+        1.0F));
 
     HDT::TurnModel model;
 
@@ -37,12 +57,40 @@ int main()
     assert(Near(model.Calculate(15.0F, parameters), 12.0F));
     assert(model.Calculate(30.0F, parameters) > 12.0F);
     assert(Near(model.Calculate(55.0F, parameters), 75.0F));
-    assert(Near(model.Calculate(-55.0F, parameters), -75.0F));
+
+    // Direction stays latched even if Skyrim's rotating room reference makes
+    // the measured yaw jump to the opposite side.
+    assert(Near(model.Calculate(-55.0F, parameters), 75.0F));
+    assert(Near(model.Calculate(-30.0F, parameters), 75.0F));
 
     // Hysteresis keeps turning active until the smaller stop threshold is crossed.
     assert(model.Calculate(12.0F, parameters) > 0.0F);
     assert(Near(model.Calculate(11.0F, parameters), 0.0F));
 
+    // Crossing neutral unlocks direction so a genuine opposite turn can start.
+    assert(Near(model.Calculate(-15.0F, parameters), -12.0F));
+    assert(Near(model.Calculate(55.0F, parameters), -75.0F));
+    assert(Near(model.Calculate(0.0F, parameters), 0.0F));
+
     model.Reset();
     assert(Near(model.Calculate(12.0F, parameters), 0.0F));
+    assert(Near(model.Calculate(-55.0F, parameters), -75.0F));
+    model.Reset();
+
+    // Regression for the observed feedback sequence: no output reversal until
+    // a real neutral sample arrives.
+    const auto stablePositiveSpeed =
+        model.Calculate(41.88F, parameters);
+    assert(stablePositiveSpeed > 0.0F);
+    assert(Near(
+        model.Calculate(-51.73F, parameters),
+        stablePositiveSpeed));
+    assert(Near(
+        model.Calculate(41.88F, parameters),
+        stablePositiveSpeed));
+    assert(Near(
+        model.Calculate(-50.68F, parameters),
+        stablePositiveSpeed));
+    assert(Near(model.Calculate(5.99F, parameters), 0.0F));
+    assert(model.Calculate(-31.38F, parameters) < 0.0F);
 }
