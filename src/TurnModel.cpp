@@ -93,6 +93,21 @@ namespace HDT
         return phase_;
     }
 
+    float TurnModel::GetLatchedDirection() const
+    {
+        return latchedDirection_;
+    }
+
+    float TurnModel::GetLatchedMagnitude() const
+    {
+        return latchedMagnitude_;
+    }
+
+    float TurnModel::GetPeakMagnitude() const
+    {
+        return peakMagnitude_;
+    }
+
     void TurnModel::Reset()
     {
         latchedDirection_ = 0.0F;

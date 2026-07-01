@@ -27,6 +27,8 @@ target_sources(
         src/CompanionProtocol.h
         src/GameIntegration.cpp
         src/GameIntegration.h
+        src/OpenVRRuntimePose.cpp
+        src/OpenVRRuntimePose.h
         src/PoseMath.cpp
         src/PoseMath.h
         src/Settings.cpp

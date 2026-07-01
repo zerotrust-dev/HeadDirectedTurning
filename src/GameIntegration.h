@@ -1,8 +1,11 @@
 #pragma once
 
 #include <atomic>
+#include <limits>
 #include <optional>
 #include <string>
+
+#include "OpenVRRuntimePose.h"
 
 namespace HDT
 {
@@ -10,8 +13,15 @@ namespace HDT
     {
         float hmdYawDegrees{};
         float bodyYawDegrees{};
+        float nodeLocalYawDegrees{};
+        float nodeRoomRelativeYawDegrees{};
+        float runtimeYawDegrees{};
         float relativeYawDegrees{};
-        float roomRelativeYawDegrees{};
+        float runtimeAngularYawDegreesPerSecond{};
+        std::int32_t runtimeTrackingResult{};
+        bool runtimePoseValid{};
+        bool runtimeDeviceConnected{};
+        float centerYawDegrees{};
     };
 
     // All runtime-sensitive Skyrim VR access belongs behind this boundary.
@@ -60,8 +70,12 @@ namespace HDT
         float calibrationElapsed_{ 0.0F };
         float calibrationSinSum_{ 0.0F };
         float calibrationCosSum_{ 0.0F };
+        float calibrationMinimumYaw_{ std::numeric_limits<float>::max() };
+        float calibrationMaximumYaw_{ std::numeric_limits<float>::lowest() };
+        float calibrationMaximumAngularSpeed_{ 0.0F };
         std::uint32_t calibrationSamples_{ 0 };
         std::optional<float> centerOffsetDegrees_;
+        OpenVRRuntimePose runtimePose_;
         std::uint32_t tracedThumbstickEvents_{ 0 };
         std::atomic<std::uint32_t> injectionTraceLines_{ 0 };
         std::atomic<float> locomotionInputMagnitude_{ 0.0F };

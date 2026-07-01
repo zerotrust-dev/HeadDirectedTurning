@@ -32,6 +32,9 @@ namespace HDT
 
         [[nodiscard]] float Calculate(float relativeYawDegrees, const TurnParameters& parameters);
         [[nodiscard]] Phase GetPhase() const;
+        [[nodiscard]] float GetLatchedDirection() const;
+        [[nodiscard]] float GetLatchedMagnitude() const;
+        [[nodiscard]] float GetPeakMagnitude() const;
         void Reset();
 
     private:

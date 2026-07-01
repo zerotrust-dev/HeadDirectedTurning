@@ -36,6 +36,10 @@ int main()
     assert(Near(HDT::ProjectedYawDegrees(0.0F, -1.0F), -90.0F));
     assert(Near(HDT::ProjectedYawDegrees(-1.0F, 0.0F), 180.0F));
     assert(Near(HDT::ProjectedYawDegrees(0.0F, 0.0F), 0.0F));
+    assert(Near(HDT::OpenVRProjectedYawDegrees(0.0F, 1.0F), 0.0F));
+    // Device forward-axis X is positive while physically looking left.
+    assert(Near(HDT::OpenVRProjectedYawDegrees(1.0F, 0.0F), -90.0F));
+    assert(Near(HDT::OpenVRProjectedYawDegrees(-1.0F, 0.0F), 90.0F));
     assert(Near(
         HDT::CalculateStickMagnitude(
             0.0F, 12.0F, 75.0F, 0.45F, 1.0F),

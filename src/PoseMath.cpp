@@ -32,4 +32,14 @@ namespace HDT
         return NormalizeDegrees(
             RadiansToDegrees(std::atan2(xAxisY, xAxisX)));
     }
+
+    float OpenVRProjectedYawDegrees(
+        float forwardAxisX,
+        float forwardAxisZ)
+    {
+        // OpenVR's device-to-absolute matrix uses +X right, +Y up and -Z
+        // forward. This sign convention maps physical left/right directly to
+        // negative/positive Xbox right-stick X.
+        return ProjectedYawDegrees(forwardAxisZ, -forwardAxisX);
+    }
 }

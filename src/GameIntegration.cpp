@@ -59,6 +59,16 @@ namespace HDT
         }
         inputManager->AddEventSink(this);
 
+        if (!runtimePose_.Initialize()) {
+            failureReason_ = "independent OpenVR HMD pose unavailable: " +
+                runtimePose_.Status();
+            logger::critical("Game integration unavailable: {}", failureReason_);
+            return false;
+        }
+        logger::info(
+            "Independent HMD reference initialized: {}",
+            runtimePose_.Status());
+
         (void)InitializeOutput();
 
         // Actor::Update is slot 0xAF in Skyrim VR. The relocation resolves the
@@ -103,7 +113,8 @@ namespace HDT
         }
 
         sample->relativeYawDegrees =
-            NormalizeDegrees(sample->relativeYawDegrees - *centerOffsetDegrees_);
+            NormalizeDegrees(sample->runtimeYawDegrees - *centerOffsetDegrees_);
+        sample->centerYawDegrees = *centerOffsetDegrees_;
         return sample;
     }
 
@@ -111,6 +122,13 @@ namespace HDT
     {
         const auto player = RE::PlayerCharacter::GetSingleton();
         if (!player) {
+            return std::nullopt;
+        }
+
+        const auto runtime = runtimePose_.Read();
+        if (!runtime ||
+            !runtime->poseValid ||
+            !runtime->deviceConnected) {
             return std::nullopt;
         }
 
@@ -149,7 +167,14 @@ namespace HDT
             hmdYaw,
             bodyYaw,
             trackingYaw,
-            relativeYaw
+            relativeYaw,
+            runtime->yawDegrees,
+            runtime->yawDegrees,
+            runtime->angularYawDegreesPerSecond,
+            runtime->trackingResult,
+            runtime->poseValid,
+            runtime->deviceConnected,
+            centerOffsetDegrees_.value_or(0.0F)
         };
     }
 
@@ -464,9 +489,18 @@ namespace HDT
         }
 
         const auto radians =
-            sample->relativeYawDegrees * (std::numbers::pi_v<float> / 180.0F);
+            sample->runtimeYawDegrees * (std::numbers::pi_v<float> / 180.0F);
         calibrationSinSum_ += std::sin(radians);
         calibrationCosSum_ += std::cos(radians);
+        calibrationMinimumYaw_ = (std::min)(
+            calibrationMinimumYaw_,
+            sample->runtimeYawDegrees);
+        calibrationMaximumYaw_ = (std::max)(
+            calibrationMaximumYaw_,
+            sample->runtimeYawDegrees);
+        calibrationMaximumAngularSpeed_ = (std::max)(
+            calibrationMaximumAngularSpeed_,
+            std::abs(sample->runtimeAngularYawDegreesPerSecond));
         ++calibrationSamples_;
         calibrationElapsed_ += deltaSeconds;
 
@@ -474,9 +508,15 @@ namespace HDT
             centerOffsetDegrees_ = NormalizeDegrees(RadiansToDegrees(
                 std::atan2(calibrationSinSum_, calibrationCosSum_)));
             logger::info(
-                "Automatic center calibrated at {:.2f} degrees from {} samples",
+                "Automatic runtime center calibrated at {:.2f} degrees from {} "
+                "samples; rawRange=[{:.2f},{:.2f}] span={:.2f} "
+                "maxAngularYaw={:.2f}deg/s",
                 *centerOffsetDegrees_,
-                calibrationSamples_);
+                calibrationSamples_,
+                calibrationMinimumYaw_,
+                calibrationMaximumYaw_,
+                calibrationMaximumYaw_ - calibrationMinimumYaw_,
+                calibrationMaximumAngularSpeed_);
         }
     }
 }

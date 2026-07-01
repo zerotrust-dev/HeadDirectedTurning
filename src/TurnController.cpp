@@ -66,24 +66,32 @@ namespace HDT
         logAccumulator_ += deltaSeconds;
         const auto logSample =
             settings.logPoseSamples && logAccumulator_ >= 0.25F;
-        if (logSample) {
-            logger::debug(
-                "raw pose hmd={:.2f} room={:.2f} tracking={:.2f} "
-                "roomRelative={:.2f} focused={} pause={} moving={} "
-                "nativeMoving={} planarSpeed={:.2f}",
-                sample->hmdYawDegrees,
-                sample->bodyYawDegrees,
-                sample->relativeYawDegrees,
-                sample->roomRelativeYawDegrees,
-                integration.IsGameFocused(),
-                pauseReason,
-                locomoting,
-                nativeMoving,
-                planarSpeed);
-            logAccumulator_ = 0.0F;
-        }
-
         if (pauseReason[0] != '\0') {
+            if (logSample) {
+                logger::debug(
+                    "reference frame runtimeRaw={:.2f} center={:.2f} "
+                    "controlYaw={:.2f} runtimeAngular={:.2f} "
+                    "trackingResult={} valid={} connected={} "
+                    "nodeLocal={:.2f} nodeRoomRelative={:.2f} "
+                    "nodeWorld={:.2f} roomWorld={:.2f} pause={} "
+                    "moving={} nativeMoving={} planarSpeed={:.2f}",
+                    sample->runtimeYawDegrees,
+                    sample->centerYawDegrees,
+                    sample->relativeYawDegrees,
+                    sample->runtimeAngularYawDegreesPerSecond,
+                    sample->runtimeTrackingResult,
+                    sample->runtimePoseValid,
+                    sample->runtimeDeviceConnected,
+                    sample->nodeLocalYawDegrees,
+                    sample->nodeRoomRelativeYawDegrees,
+                    sample->hmdYawDegrees,
+                    sample->bodyYawDegrees,
+                    pauseReason,
+                    locomoting,
+                    nativeMoving,
+                    planarSpeed);
+                logAccumulator_ = 0.0F;
+            }
             integration.ApplyTurnInput(0.0F);
             turnModel_.Reset();
             smoothedTurnSpeed_ = 0.0F;
@@ -128,24 +136,66 @@ namespace HDT
                     direction *
                     std::copysign(stickMagnitude, smoothedTurnSpeed_);
             }
-            if (logSample && std::abs(normalizedInput) >= 0.001F) {
+            if (logSample) {
                 logger::debug(
-                    "turn output relative={:.2f} targetSpeed={:.2f} "
-                    "smoothedSpeed={:.2f} requested={:.3f} moving={} "
-                    "startAngle={:.2f} phase={}",
+                    "control frame runtimeRaw={:.2f} center={:.2f} "
+                    "controlYaw={:.2f} runtimeAngular={:.2f} "
+                    "trackingResult={} valid={} connected={} "
+                    "nodeLocal={:.2f} nodeRoomRelative={:.2f} "
+                    "nodeWorld={:.2f} roomWorld={:.2f} "
+                    "moving={} nativeMoving={} planarSpeed={:.2f} "
+                    "startAngle={:.2f} stopAngle={:.2f} phase={} "
+                    "latchedDirection={:.0f} latchedMagnitude={:.2f} "
+                    "peakMagnitude={:.2f} targetSpeed={:.2f} "
+                    "smoothedSpeed={:.2f} requested={:.3f} pause={}",
+                    sample->runtimeYawDegrees,
+                    sample->centerYawDegrees,
                     sample->relativeYawDegrees,
+                    sample->runtimeAngularYawDegreesPerSecond,
+                    sample->runtimeTrackingResult,
+                    sample->runtimePoseValid,
+                    sample->runtimeDeviceConnected,
+                    sample->nodeLocalYawDegrees,
+                    sample->nodeRoomRelativeYawDegrees,
+                    sample->hmdYawDegrees,
+                    sample->bodyYawDegrees,
+                    locomoting,
+                    nativeMoving,
+                    planarSpeed,
+                    effectiveStartAngle,
+                    effectiveStopAngle,
+                    static_cast<std::int32_t>(turnModel_.GetPhase()),
+                    turnModel_.GetLatchedDirection(),
+                    turnModel_.GetLatchedMagnitude(),
+                    turnModel_.GetPeakMagnitude(),
                     targetSpeed,
                     smoothedTurnSpeed_,
                     normalizedInput,
-                    locomoting,
-                    effectiveStartAngle,
-                    static_cast<std::int32_t>(turnModel_.GetPhase()));
+                    pauseReason);
+                logAccumulator_ = 0.0F;
             }
             if (!integration.ApplyTurnInput(normalizedInput)) {
                 logger::error("Rotation output failed; stopping controller");
                 Stop();
             }
         } else {
+            if (logSample) {
+                logger::debug(
+                    "diagnostic frame runtimeRaw={:.2f} center={:.2f} "
+                    "controlYaw={:.2f} runtimeAngular={:.2f} "
+                    "nodeLocal={:.2f} nodeRoomRelative={:.2f} moving={} "
+                    "phase={} targetSpeed={:.2f}",
+                    sample->runtimeYawDegrees,
+                    sample->centerYawDegrees,
+                    sample->relativeYawDegrees,
+                    sample->runtimeAngularYawDegreesPerSecond,
+                    sample->nodeLocalYawDegrees,
+                    sample->nodeRoomRelativeYawDegrees,
+                    locomoting,
+                    static_cast<std::int32_t>(turnModel_.GetPhase()),
+                    targetSpeed);
+                logAccumulator_ = 0.0F;
+            }
             integration.ApplyTurnInput(0.0F);
         }
     }
