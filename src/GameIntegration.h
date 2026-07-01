@@ -47,6 +47,7 @@ namespace HDT
             float speedThreshold) const;
         [[nodiscard]] bool IsPlayerMoving() const;
         [[nodiscard]] float PlanarSpeed() const;
+        [[nodiscard]] float PlayerYawDegrees() const;
         [[nodiscard]] bool ApplyTurnInput(float normalizedInput);
         RE::BSEventNotifyControl ProcessEvent(
             RE::InputEvent* const* events,

@@ -1,3 +1,4 @@
+#include "GazeAlignmentModel.h"
 #include "PoseMath.h"
 #include "TurnModel.h"
 
@@ -186,4 +187,76 @@ int main()
     assert(Near(model.Calculate(5.0F, movingParameters), 0.0F));
     assert(model.Calculate(5.1F, movingParameters) > 0.0F);
     assert(Near(model.Calculate(5.0F, movingParameters), 0.0F));
+
+    constexpr HDT::GazeAlignmentParameters alignmentParameters{
+        15.0F,
+        2.0F,
+        1.0F
+    };
+    HDT::GazeAlignmentModel alignment;
+
+    // A held 20-degree gaze creates a body target 20 degrees away. Output
+    // naturally falls to zero when the body catches that target.
+    assert(Near(
+        alignment.Calculate(0.0F, 100.0F, alignmentParameters),
+        0.0F));
+    assert(Near(
+        alignment.Calculate(20.0F, 100.0F, alignmentParameters),
+        20.0F));
+    assert(Near(alignment.GetTargetBodyYaw(), 120.0F));
+    assert(Near(
+        alignment.Calculate(20.0F, 110.0F, alignmentParameters),
+        10.0F));
+    assert(Near(
+        alignment.Calculate(20.0F, 119.0F, alignmentParameters),
+        0.0F));
+    assert(
+        alignment.GetPhase() ==
+        HDT::GazeAlignmentModel::Phase::clutch);
+
+    // Returning the physical head is clutched and does not undo the body turn.
+    assert(Near(
+        alignment.Calculate(18.0F, 119.0F, alignmentParameters),
+        0.0F));
+    assert(Near(
+        alignment.Calculate(10.0F, 119.0F, alignmentParameters),
+        0.0F));
+    assert(
+        alignment.GetPhase() ==
+        HDT::GazeAlignmentModel::Phase::idle);
+
+    // A fresh opposite gaze starts normally after the clutched return.
+    assert(Near(
+        alignment.Calculate(-20.0F, 119.0F, alignmentParameters),
+        -20.0F));
+
+    // The original two-degree return remains an immediate manual stop.
+    alignment.Reset();
+    assert(alignment.Calculate(20.0F, 0.0F, alignmentParameters) > 0.0F);
+    assert(alignment.Calculate(25.0F, 0.0F, alignmentParameters) > 0.0F);
+    assert(Near(
+        alignment.Calculate(23.0F, 0.0F, alignmentParameters),
+        0.0F));
+    assert(
+        alignment.GetPhase() ==
+        HDT::GazeAlignmentModel::Phase::clutch);
+
+    // From clutch, another two-degree outward movement requests only the new
+    // two-degree increment rather than repeating the full head angle.
+    assert(Near(
+        alignment.Calculate(24.9F, 0.0F, alignmentParameters),
+        0.0F));
+    assert(Near(
+        alignment.Calculate(25.0F, 0.0F, alignmentParameters),
+        2.0F));
+
+    // Body targets and errors remain correct across the +/-180-degree seam.
+    alignment.Reset();
+    assert(Near(
+        alignment.Calculate(20.0F, 170.0F, alignmentParameters),
+        20.0F));
+    assert(Near(alignment.GetTargetBodyYaw(), -170.0F));
+    assert(Near(
+        alignment.Calculate(20.0F, -171.0F, alignmentParameters),
+        0.0F));
 }

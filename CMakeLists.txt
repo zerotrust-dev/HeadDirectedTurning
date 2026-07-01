@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.24)
 
 project(
     HeadDirectedTurning
-    VERSION 0.1.0
+    VERSION 1.1.0
     LANGUAGES CXX
 )
 
@@ -27,6 +27,8 @@ target_sources(
         src/CompanionProtocol.h
         src/GameIntegration.cpp
         src/GameIntegration.h
+        src/GazeAlignmentModel.cpp
+        src/GazeAlignmentModel.h
         src/OpenVRRuntimePose.cpp
         src/OpenVRRuntimePose.h
         src/PoseMath.cpp
@@ -99,6 +101,8 @@ if(BUILD_TESTING)
     add_executable(
         HeadDirectedTurningTests
         tests/TurnModelTests.cpp
+        src/GazeAlignmentModel.cpp
+        src/GazeAlignmentModel.h
         src/PoseMath.cpp
         src/PoseMath.h
         src/TurnModel.cpp

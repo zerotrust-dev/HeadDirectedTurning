@@ -202,6 +202,15 @@ namespace HDT
         return player && player->IsMoving();
     }
 
+    float GameIntegration::PlayerYawDegrees() const
+    {
+        const auto player = RE::PlayerCharacter::GetSingleton();
+        if (!player) {
+            return 0.0F;
+        }
+        return NormalizeDegrees(RadiansToDegrees(player->GetAngleZ()));
+    }
+
     bool GameIntegration::IsLocomoting(
         float inputThreshold,
         float speedThreshold) const

@@ -49,6 +49,14 @@ namespace HDT
         diagnosticOnly = ini.GetBoolValue("General", "DiagnosticOnly", diagnosticOnly);
         logPoseSamples = ini.GetBoolValue("General", "LogPoseSamples", logPoseSamples);
 
+        const std::string_view mode = ini.GetValue(
+            "Turning",
+            "TurningMode",
+            "GazeAlignment");
+        turningMode =
+            mode == "Velocity" || mode == "velocity" ?
+            TurningMode::velocity :
+            TurningMode::gazeAlignment;
         startAngle = static_cast<float>(ini.GetDoubleValue("Turning", "StartAngle", startAngle));
         stopAngle = static_cast<float>(ini.GetDoubleValue("Turning", "StopAngle", stopAngle));
         movingStartAngle = static_cast<float>(
@@ -61,6 +69,11 @@ namespace HDT
                 "Turning",
                 "StopOnReturnDegrees",
                 stopOnReturnDegrees));
+        alignmentTolerance = static_cast<float>(
+            ini.GetDoubleValue(
+                "Turning",
+                "AlignmentTolerance",
+                alignmentTolerance));
         movementInputThreshold = static_cast<float>(
             ini.GetDoubleValue(
                 "Turning",
@@ -106,6 +119,10 @@ namespace HDT
             stopOnReturnDegrees,
             0.25F,
             15.0F);
+        alignmentTolerance = std::clamp(
+            alignmentTolerance,
+            0.25F,
+            5.0F);
         movementInputThreshold = std::clamp(
             movementInputThreshold,
             0.0F,

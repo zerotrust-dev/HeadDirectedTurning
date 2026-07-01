@@ -2,6 +2,12 @@
 
 namespace HDT
 {
+    enum class TurningMode
+    {
+        velocity,
+        gazeAlignment
+    };
+
     struct Settings
     {
         std::uint32_t schemaVersion{ 1 };
@@ -9,10 +15,12 @@ namespace HDT
         bool diagnosticOnly{ false };
         bool logPoseSamples{ true };
 
+        TurningMode turningMode{ TurningMode::gazeAlignment };
         float startAngle{ 15.0F };
         float stopAngle{ 15.0F };
         float movingStartAngle{ 5.0F };
         float stopOnReturnDegrees{ 2.0F };
+        float alignmentTolerance{ 1.5F };
         float movementInputThreshold{ 0.15F };
         float movementSpeedThreshold{ 5.0F };
         float maximumAngle{ 55.0F };

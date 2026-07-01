@@ -25,8 +25,12 @@ namespace HDT
         }
 
         running_ = true;
-        logger::info("Turn controller started in {} mode",
-            settings.diagnosticOnly ? "diagnostic" : "active");
+        logger::info(
+            "Turn controller started in {} mode with {} turning",
+            settings.diagnosticOnly ? "diagnostic" : "active",
+            settings.turningMode == TurningMode::gazeAlignment ?
+                "gaze-alignment" :
+                "velocity");
     }
 
     void TurnController::Stop()
@@ -34,6 +38,7 @@ namespace HDT
         running_ = false;
         GameIntegration::GetSingleton().ApplyTurnInput(0.0F);
         turnModel_.Reset();
+        gazeAlignmentModel_.Reset();
         smoothedTurnSpeed_ = 0.0F;
     }
 
@@ -46,6 +51,7 @@ namespace HDT
             deltaSeconds > maximumSafeFrameTime) {
             GameIntegration::GetSingleton().ApplyTurnInput(0.0F);
             turnModel_.Reset();
+            gazeAlignmentModel_.Reset();
             smoothedTurnSpeed_ = 0.0F;
             return;
         }
@@ -94,6 +100,7 @@ namespace HDT
             }
             integration.ApplyTurnInput(0.0F);
             turnModel_.Reset();
+            gazeAlignmentModel_.Reset();
             smoothedTurnSpeed_ = 0.0F;
             return;
         }
@@ -104,16 +111,51 @@ namespace HDT
         const auto effectiveStopAngle = locomoting ?
             settings.movingStartAngle :
             settings.stopAngle;
-        const TurnParameters parameters{
-            effectiveStartAngle,
-            effectiveStopAngle,
-            settings.maximumAngle,
-            settings.minimumTurnSpeed,
-            settings.maximumTurnSpeed,
-            settings.accelerationCurve,
-            settings.stopOnReturnDegrees
-        };
-        const auto targetSpeed = turnModel_.Calculate(sample->relativeYawDegrees, parameters);
+        const auto playerYaw = integration.PlayerYawDegrees();
+        const auto alignmentHeading = sample->bodyYawDegrees;
+        auto alignmentError = 0.0F;
+        auto targetSpeed = 0.0F;
+        if (settings.turningMode == TurningMode::gazeAlignment) {
+            turnModel_.Reset();
+            const GazeAlignmentParameters parameters{
+                effectiveStartAngle,
+                settings.stopOnReturnDegrees,
+                settings.alignmentTolerance
+            };
+            alignmentError = gazeAlignmentModel_.Calculate(
+                sample->relativeYawDegrees,
+                alignmentHeading,
+                parameters);
+            if (alignmentError != 0.0F) {
+                const auto normalizedError = std::clamp(
+                    std::abs(alignmentError) / settings.maximumAngle,
+                    0.0F,
+                    1.0F);
+                const auto curved = std::pow(
+                    normalizedError,
+                    settings.accelerationCurve);
+                targetSpeed = std::copysign(
+                    std::lerp(
+                        settings.minimumTurnSpeed,
+                        settings.maximumTurnSpeed,
+                        curved),
+                    alignmentError);
+            }
+        } else {
+            gazeAlignmentModel_.Reset();
+            const TurnParameters parameters{
+                effectiveStartAngle,
+                effectiveStopAngle,
+                settings.maximumAngle,
+                settings.minimumTurnSpeed,
+                settings.maximumTurnSpeed,
+                settings.accelerationCurve,
+                settings.stopOnReturnDegrees
+            };
+            targetSpeed = turnModel_.Calculate(
+                sample->relativeYawDegrees,
+                parameters);
+        }
         if (targetSpeed == 0.0F || settings.smoothingSeconds == 0.0F) {
             smoothedTurnSpeed_ = targetSpeed;
         } else {
@@ -144,7 +186,11 @@ namespace HDT
                     "nodeLocal={:.2f} nodeRoomRelative={:.2f} "
                     "nodeWorld={:.2f} roomWorld={:.2f} "
                     "moving={} nativeMoving={} planarSpeed={:.2f} "
-                    "startAngle={:.2f} stopAngle={:.2f} phase={} "
+                    "mode={} playerYaw={:.2f} alignmentHeading={:.2f} "
+                    "alignmentTarget={:.2f} "
+                    "alignmentError={:.2f} alignmentPhase={} "
+                    "headAnchor={:.2f} clutchHead={:.2f} "
+                    "startAngle={:.2f} stopAngle={:.2f} velocityPhase={} "
                     "latchedDirection={:.0f} latchedMagnitude={:.2f} "
                     "peakMagnitude={:.2f} suppressedDirection={:.0f} "
                     "suppressedMagnitude={:.2f} targetSpeed={:.2f} "
@@ -163,6 +209,17 @@ namespace HDT
                     locomoting,
                     nativeMoving,
                     planarSpeed,
+                    settings.turningMode == TurningMode::gazeAlignment ?
+                        "alignment" :
+                        "velocity",
+                    playerYaw,
+                    alignmentHeading,
+                    gazeAlignmentModel_.GetTargetBodyYaw(),
+                    alignmentError,
+                    static_cast<std::int32_t>(
+                        gazeAlignmentModel_.GetPhase()),
+                    gazeAlignmentModel_.GetHeadAnchor(),
+                    gazeAlignmentModel_.GetClutchHeadYaw(),
                     effectiveStartAngle,
                     effectiveStopAngle,
                     static_cast<std::int32_t>(turnModel_.GetPhase()),
@@ -187,7 +244,10 @@ namespace HDT
                     "diagnostic frame runtimeRaw={:.2f} center={:.2f} "
                     "controlYaw={:.2f} runtimeAngular={:.2f} "
                     "nodeLocal={:.2f} nodeRoomRelative={:.2f} moving={} "
-                    "phase={} targetSpeed={:.2f}",
+                    "mode={} playerYaw={:.2f} alignmentHeading={:.2f} "
+                    "velocityPhase={} "
+                    "alignmentPhase={} alignmentTarget={:.2f} "
+                    "alignmentError={:.2f} targetSpeed={:.2f}",
                     sample->runtimeYawDegrees,
                     sample->centerYawDegrees,
                     sample->relativeYawDegrees,
@@ -195,7 +255,16 @@ namespace HDT
                     sample->nodeLocalYawDegrees,
                     sample->nodeRoomRelativeYawDegrees,
                     locomoting,
+                    settings.turningMode == TurningMode::gazeAlignment ?
+                        "alignment" :
+                        "velocity",
+                    playerYaw,
+                    alignmentHeading,
                     static_cast<std::int32_t>(turnModel_.GetPhase()),
+                    static_cast<std::int32_t>(
+                        gazeAlignmentModel_.GetPhase()),
+                    gazeAlignmentModel_.GetTargetBodyYaw(),
+                    alignmentError,
                     targetSpeed);
                 logAccumulator_ = 0.0F;
             }

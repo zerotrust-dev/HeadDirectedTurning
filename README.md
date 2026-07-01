@@ -1,5 +1,12 @@
 # Head Directed Turning
 
+`v1.0.0` is the proven velocity-turning release. Current development adds a
+gaze-alignment mode that turns the VR room until the body heading catches the
+physical gaze, then clutches the comfortable head return.
+
+Set `TurningMode=GazeAlignment` for positional body alignment or
+`TurningMode=Velocity` for the v1.0 hold-to-turn behavior.
+
 A Skyrim VR SKSE plugin for hands-free, head-directed smooth turning.
 
 > **Work in progress:** This repository is under active development. The
