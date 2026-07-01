@@ -37,8 +37,35 @@ namespace HDT
         if (phase_ == Phase::suppressed) {
             if (magnitude <= parameters.startAngle) {
                 Reset();
+                return 0.0F;
             }
-            return 0.0F;
+
+            const auto direction =
+                std::copysign(1.0F, relativeYawDegrees);
+            const auto sameDirection =
+                direction == suppressedDirection_;
+            const auto outwardReturn =
+                magnitude - suppressedMagnitude_ >=
+                parameters.stopOnReturnDegrees;
+            const auto crossedToOppositeSide =
+                direction != suppressedDirection_;
+
+            // Returning toward center stops an active turn. A subsequent
+            // outward gesture of the same size is a fresh thumbstick gesture
+            // and must re-arm even if the head never entered the neutral zone.
+            // An opposite-side sample beyond StartAngle also proves that
+            // neutral was crossed between frames.
+            if ((sameDirection && outwardReturn) ||
+                crossedToOppositeSide) {
+                latchedDirection_ = direction;
+                latchedMagnitude_ = magnitude;
+                peakMagnitude_ = magnitude;
+                suppressedDirection_ = 0.0F;
+                suppressedMagnitude_ = 0.0F;
+                phase_ = Phase::turning;
+            } else {
+                return 0.0F;
+            }
         }
 
         if (phase_ == Phase::turning) {
@@ -64,6 +91,8 @@ namespace HDT
             std::signbit(latchedDirection_)) {
             if (peakMagnitude_ - magnitude >=
                 parameters.stopOnReturnDegrees) {
+                suppressedDirection_ = latchedDirection_;
+                suppressedMagnitude_ = magnitude;
                 latchedDirection_ = 0.0F;
                 latchedMagnitude_ = 0.0F;
                 peakMagnitude_ = 0.0F;
@@ -108,11 +137,23 @@ namespace HDT
         return peakMagnitude_;
     }
 
+    float TurnModel::GetSuppressedDirection() const
+    {
+        return suppressedDirection_;
+    }
+
+    float TurnModel::GetSuppressedMagnitude() const
+    {
+        return suppressedMagnitude_;
+    }
+
     void TurnModel::Reset()
     {
         latchedDirection_ = 0.0F;
         latchedMagnitude_ = 0.0F;
         peakMagnitude_ = 0.0F;
+        suppressedDirection_ = 0.0F;
+        suppressedMagnitude_ = 0.0F;
         phase_ = Phase::idle;
     }
 }

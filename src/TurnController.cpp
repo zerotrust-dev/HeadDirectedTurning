@@ -146,7 +146,8 @@ namespace HDT
                     "moving={} nativeMoving={} planarSpeed={:.2f} "
                     "startAngle={:.2f} stopAngle={:.2f} phase={} "
                     "latchedDirection={:.0f} latchedMagnitude={:.2f} "
-                    "peakMagnitude={:.2f} targetSpeed={:.2f} "
+                    "peakMagnitude={:.2f} suppressedDirection={:.0f} "
+                    "suppressedMagnitude={:.2f} targetSpeed={:.2f} "
                     "smoothedSpeed={:.2f} requested={:.3f} pause={}",
                     sample->runtimeYawDegrees,
                     sample->centerYawDegrees,
@@ -168,6 +169,8 @@ namespace HDT
                     turnModel_.GetLatchedDirection(),
                     turnModel_.GetLatchedMagnitude(),
                     turnModel_.GetPeakMagnitude(),
+                    turnModel_.GetSuppressedDirection(),
+                    turnModel_.GetSuppressedMagnitude(),
                     targetSpeed,
                     smoothedTurnSpeed_,
                     normalizedInput,

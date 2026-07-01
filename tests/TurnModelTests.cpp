@@ -125,8 +125,8 @@ int main()
         model.Calculate(-15.0F, fullDeadzoneStopParameters),
         0.0F));
 
-    // An active turn stops after a small deliberate return gesture and remains
-    // suppressed while the head is still outside the neutral zone.
+    // An active turn stops after a small deliberate return gesture. It remains
+    // suppressed until either neutral or an equal outward gesture re-arms it.
     constexpr HDT::TurnParameters returnGestureParameters{
         15.0F,
         15.0F,
@@ -146,15 +146,31 @@ int main()
     assert(
         model.GetPhase() ==
         HDT::TurnModel::Phase::suppressed);
-    assert(Near(
-        model.Calculate(30.0F, returnGestureParameters),
-        0.0F));
-    assert(Near(
-        model.Calculate(15.0F, returnGestureParameters),
-        0.0F));
+    assert(Near(model.Calculate(24.9F, returnGestureParameters), 0.0F));
+    assert(model.Calculate(25.0F, returnGestureParameters) > 0.0F);
+    assert(model.GetPhase() == HDT::TurnModel::Phase::turning);
+    assert(Near(model.Calculate(23.0F, returnGestureParameters), 0.0F));
+    assert(Near(model.Calculate(15.0F, returnGestureParameters), 0.0F));
     assert(
         model.GetPhase() ==
         HDT::TurnModel::Phase::idle);
+    assert(model.Calculate(-20.0F, returnGestureParameters) < 0.0F);
+
+    // Repeated same-direction gestures can walk the view around a full circle:
+    // outward starts, two degrees inward stops, two degrees outward re-arms.
+    model.Reset();
+    assert(model.Calculate(20.0F, returnGestureParameters) > 0.0F);
+    assert(model.Calculate(25.0F, returnGestureParameters) > 0.0F);
+    assert(Near(model.Calculate(23.0F, returnGestureParameters), 0.0F));
+    assert(Near(model.Calculate(24.9F, returnGestureParameters), 0.0F));
+    assert(model.Calculate(25.0F, returnGestureParameters) > 0.0F);
+    assert(model.Calculate(30.0F, returnGestureParameters) > 0.0F);
+    assert(Near(model.Calculate(28.0F, returnGestureParameters), 0.0F));
+    assert(model.Calculate(30.0F, returnGestureParameters) > 0.0F);
+
+    // A frame that crosses center and lands beyond the opposite threshold
+    // starts the opposite turn even if no neutral sample was observed.
+    assert(Near(model.Calculate(28.0F, returnGestureParameters), 0.0F));
     assert(model.Calculate(-20.0F, returnGestureParameters) < 0.0F);
 
     constexpr HDT::TurnParameters movingParameters{

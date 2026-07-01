@@ -35,6 +35,8 @@ namespace HDT
         [[nodiscard]] float GetLatchedDirection() const;
         [[nodiscard]] float GetLatchedMagnitude() const;
         [[nodiscard]] float GetPeakMagnitude() const;
+        [[nodiscard]] float GetSuppressedDirection() const;
+        [[nodiscard]] float GetSuppressedMagnitude() const;
         void Reset();
 
     private:
@@ -45,6 +47,8 @@ namespace HDT
         float latchedDirection_{ 0.0F };
         float latchedMagnitude_{ 0.0F };
         float peakMagnitude_{ 0.0F };
+        float suppressedDirection_{ 0.0F };
+        float suppressedMagnitude_{ 0.0F };
         Phase phase_{ Phase::idle };
     };
 }
