@@ -70,7 +70,7 @@ namespace HDT
         float calibrationElapsed_{ 0.0F };
         float calibrationSinSum_{ 0.0F };
         float calibrationCosSum_{ 0.0F };
-        float calibrationMinimumYaw_{ std::numeric_limits<float>::max() };
+        float calibrationMinimumYaw_{ (std::numeric_limits<float>::max)() };
         float calibrationMaximumYaw_{ std::numeric_limits<float>::lowest() };
         float calibrationMaximumAngularSpeed_{ 0.0F };
         std::uint32_t calibrationSamples_{ 0 };
